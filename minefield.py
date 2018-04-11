@@ -203,6 +203,8 @@ class Escapes:
                 xcoords.append(x)
                 ycoords.append(y)
             self.xy_coords_by_trial.append([xcoords, ycoords])
+
+#MAKE THIS A NEW FUNCTION THAT CALCULATES THE MOST RECENT 3 BOUTS. 
 #         stim_onset = self.timerange[0]
 #         for filenum, pre_xy_file in enumerate(self.pre_escape):
 #             pre_xcoords = []
