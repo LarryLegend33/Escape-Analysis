@@ -20,6 +20,8 @@ from scipy.ndimage import gaussian_filter
 from scipy.signal import argrelmin, argrelmax, argrelextrema
 
 
+#Hi
+
 # To Do 4/15
 # GET RID OF CONFUSING 0 and 1 INDEXING. MAKE EVERYTHING ON A 0-9 BASIS IN PROGRAM AND IN HERE.
 # MAKE SURE ANY FUNCTIONS THAT ARE TRIAL SPECIFIC GET INEVITABLY CALLED AFTER EACH OTHER. 
