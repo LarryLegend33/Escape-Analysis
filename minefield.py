@@ -801,7 +801,7 @@ class Escapes:
 
 # this function will realign all the escapes during barrier_free conditions vertically (i.e. fish pointing at pi/2). 
 # for barrier conditions, will realign all escapes vertically, and put blue when barrier is to the right, pink when barrier to the left. 
-# have to write an external function that takes a barrier Escape object and a no barrier Escape object and maps the barrier locations onto 
+# have to write an external function that takes a barrier Escape object and a no barrier Escape object and maps  the barrier locations onto 
 # the no barrier trajectories. the function will identify how many trajectories cross or come within 2 pixels of hitting the barrier, meaning the 
 # center of mass would dictate a collision (i.e. center of mass is ~ 2 pixels from the edge of the fish). 
 
@@ -964,7 +964,7 @@ def magvector(vec):
 
 fish_id = '/Fish0'
 pl.ioff()
-os.chdir('/Users/andrewbolton/Desktop/Escape Analysis/')
+os.chdir('/Users/nightcrawler2/Escape-Analysis/')
 esc_dir = os.getcwd() + fish_id
 escape_l = Escapes('l', esc_dir)
 escape_d = Escapes('d', esc_dir)
@@ -999,6 +999,9 @@ escape_n.control_escapes()
 
 
 data_output(escape_l, escape_n, escape_d, esc_dir)
+
+
+
 
 # THROW OUT CSTARTS WHERE THERE IS A LOCAL MAX OR MIN BEFORE A 90 CROSSING. 
 
