@@ -47,8 +47,7 @@ def data_output(esc_l, esc_n, esc_d, drc):
 
     def ordered_dic(esc, dic):
         ord_dic = []
-        for i in range(len(esc.xy_coords_by_trial)):
-            tr = i+1
+        for tr in range(len(esc.xy_coords_by_trial)):
             val = float('nan')
             try:
                 val = dic[str(tr)]
@@ -142,9 +141,9 @@ class Escapes:
         self.barrier_diam = 0
         self.barrier_xy_by_trial = []
         print self.directory
-        self.background = cv2.cvtColor(
-            cv2.imread(directory + '/background_' + exp_type + '.tif'),
-            cv2.cv.CV_BGR2GRAY)
+        back_color = cv2.imread(directory + '/background_' + exp_type + '.tif')
+        print(back_color.shape)
+        self.background = cv2.cvtColor(back_color, cv2.COLOR_BGR2GRAY)
         self.pre_escape = [np.loadtxt(directory + '/' + f_id, dtype='string')
                            for f_id in os.listdir(directory)
                            if f_id[0:15] == 'fishcoords_gray' and f_id[-5:-4] == exp_type]        
@@ -334,7 +333,7 @@ class Escapes:
         vid_file = self.movie_id[trial]
         fps = 500
         vid = imageio.get_reader(vid_file, 'ffmpeg')
-        fourcc = cv2.cv.CV_FOURCC('a', 'v', 'c', '1')
+        fourcc = cv2.VideoWriter_fourcc('M', 'J', 'P', 'G')
         dr = self.directory
         if makevid:
             ha_vid = cv2.VideoWriter(
@@ -347,7 +346,7 @@ class Escapes:
         for frame, (x, y) in enumerate(zip(xcoords, ycoords)):
             y = 1024 - y
             im_color = vid.get_data(self.timerange[0] + frame)
-            im = cv2.cvtColor(im_color, cv2.cv.CV_BGR2GRAY)
+            im = cv2.cvtColor(im_color, cv2.COLOR_BGR2GRAY)
             background_roi = slice_background(self.background, x, y)
             brsub = cv2.absdiff(im, background_roi)
             if True:
@@ -507,8 +506,7 @@ class Escapes:
                          fc='r')
 
         collision_trials = []
-        for xy_coords in self.xy_coords_by_trial:
-            trial_counter += 1
+        for trial_counter, xy_coords in enumerate(self.xy_coords_by_trial):
             self.get_orientation(trial_counter, False)
             self.find_initial_conditions(trial_counter)
             ha_init = self.initial_conditions[0]
@@ -684,7 +682,7 @@ class Escapes:
                 
         vid_file = self.movie_id[trial]
         fps = 500
-        fourcc = cv2.cv.CV_FOURCC('a', 'v', 'c', '1')
+        fourcc = cv2.VideoWriter_fourcc('M', 'J', 'P', 'G')
         sum_angles = []
         all_angles = []
         all_vecs = []
@@ -703,19 +701,19 @@ class Escapes:
             x = self.xy_coords_by_trial[trial][0][frame]
             y = self.xy_coords_by_trial[trial][1][frame]
             im_color = vid.get_data(frame)
-            im = cv2.cvtColor(im_color, cv2.cv.CV_BGR2GRAY)
+            im = cv2.cvtColor(im_color, cv2.COLOR_BGR2GRAY)
             background_roi = slice_background(self.background, x, 1024-y)
             brsub = cv2.absdiff(im, background_roi)
 #            brsub = gaussian_filter(brsub, 1)
             r, im_thresh = cv2.threshold(brsub,
                                          13,
                                          255,
-                                         cv2.cv.CV_THRESH_BINARY)
+                                         cv2.THRESH_BINARY)
             im_thresh, m, c = rotate_image(im_thresh, ha_adj)
-            im_thresh_color = cv2.cvtColor(im_thresh, cv2.cv.CV_GRAY2RGB)
-            body_cont, hier = cv2.findContours(im_thresh,
-                                               cv2.RETR_TREE,
-                                               cv2.CHAIN_APPROX_NONE)
+            im_thresh_color = cv2.cvtColor(im_thresh, cv2.COLOR_GRAY2RGB)
+            r, body_cont, hier = cv2.findContours(im_thresh,
+                                                  cv2.RETR_EXTERNAL,
+                                                  cv2.CHAIN_APPROX_SIMPLE)
             conts_by_area = sorted(body_cont,
                                    key=cv2.contourArea,
                                    reverse=True)
@@ -964,48 +962,49 @@ def magvector(vec):
 # how the infer functions at the end overwrite member variables. maybe change this at some point. 
 
 
-fish_id = '/Fish0'
+
+#instead of using l, n, d notation, use cond1, cond2, nb. 
+
+
+fish_id = '/102318_2'
 pl.ioff()
 os.chdir('/Users/nightcrawler2/Escape-Analysis/')
 esc_dir = os.getcwd() + fish_id
-escape_l = Escapes('l', esc_dir)
-escape_d = Escapes('d', esc_dir)
-escape_n = Escapes('n', esc_dir)
+escape_cond1 = Escapes('v', esc_dir)
+escape_cond2 = Escapes('i', esc_dir)
+escape_nb = Escapes('n', esc_dir)
 
-escape_l.exporter()
+escape_cond1.exporter()
 
 
-escape_l.load_experiment()
-escape_d.load_experiment()
-escape_n.load_experiment()
+escape_cond1.load_experiment()
+escape_cond2.load_experiment()
+escape_nb.load_experiment()
 
 plotcstarts = False
 
-for i in range(len(escape_l.xy_coords_by_trial)):
-    escape_l.trial_analyzer(i, plotcstarts)
-    escape_n.infer_collisions(escape_l, False)
+for i in range(len(escape_cond1.xy_coords_by_trial)):
+    escape_cond1.trial_analyzer(i, plotcstarts)
+    escape_nb.infer_collisions(escape_cond1, False)
 
-for k in range(len(escape_d.xy_coords_by_trial)):
-    escape_d.trial_analyzer(k, plotcstarts)
-    escape_n.infer_collisions(escape_d, False)
+for k in range(len(escape_cond2.xy_coords_by_trial)):
+    escape_cond2.trial_analyzer(k, plotcstarts)
+    escape_nb.infer_collisions(escape_cond2, False)
     
-for j in range(len(escape_n.xy_coords_by_trial)):
+for j in range(len(escape_nb.xy_coords_by_trial)):
     trial_num = j
-    escape_n.trial_analyzer(j, plotcstarts)
+    escape_nb.trial_analyzer(j, plotcstarts)
 
 # # MAKE SURE THESE ALWAYS COME LAST. IF NOT, HA_IN_TIMEFRAME REMAINS THE LAST TRIAL.
 
-escape_l.escapes_vs_barrierloc()
-escape_d.escapes_vs_barrierloc()
-escape_n.control_escapes()
+escape_cond1.escapes_vs_barrierloc()
+escape_cond2.escapes_vs_barrierloc()
+escape_nb.control_escapes()
 
 
-data_output(escape_l, escape_n, escape_d, esc_dir)
+data_output(escape_cond1, escape_nb, escape_cond2, esc_dir)
 
 
-
-
-# THROW OUT CSTARTS WHERE THERE IS A LOCAL MAX OR MIN BEFORE A 90 CROSSING. 
 
 
 
