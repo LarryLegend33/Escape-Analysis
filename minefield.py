@@ -20,6 +20,9 @@ from scipy.ndimage import gaussian_filter
 from scipy.signal import argrelmin, argrelmax, argrelextrema
 
 
+
+
+
 #Hi There
 
 # To Do 4/15
@@ -144,18 +147,25 @@ class Escapes:
         back_color = cv2.imread(directory + '/background_' + exp_type + '.tif')
         print(back_color.shape)
         self.background = cv2.cvtColor(back_color, cv2.COLOR_BGR2GRAY)
-        self.pre_escape = [np.loadtxt(directory + '/' + f_id, dtype='string')
+        pre_escape_files = sorted([directory + '/' + f_id
+                                   for f_id in os.listdir(directory)
+                                   if f_id[0:15] == 'fishcoords_gray'
+                                   and f_id[-5:-4] == exp_type])
+        self.pre_escape = [
+            np.loadtxt(pe, dtype='string') for pe in pre_escape_files]
+        xy_files = sorted([directory + '/' + f_id
                            for f_id in os.listdir(directory)
-                           if f_id[0:15] == 'fishcoords_gray' and f_id[-5:-4] == exp_type]        
-        self.xy_files = [np.loadtxt(directory + '/' + f_id, dtype='string')
-                         for f_id in os.listdir(directory)
-                         if f_id[0:4] == 'tapr' and f_id[-5:-4] == exp_type]
-        self.stim_files = [np.loadtxt(directory + '/' + f_id, dtype='string')
-                           for f_id in os.listdir(directory)
-                           if f_id[0:4] == 'stim' and f_id[-5:-4] == exp_type]
-        self.movie_id = [directory + '/' + f_id
-                         for f_id in os.listdir(directory)
-                         if (f_id[-5:] == exp_type+'.AVI' and f_id[0] == 't')]
+                           if f_id[0:4] == 'tapr' and f_id[-5:-4] == exp_type])
+        self.xy_escapes = [np.loadtxt(xyf, dtype='string') for xyf in xy_files]
+        stim_files = sorted([directory + '/' + f_id
+                             for f_id in os.listdir(directory)
+                             if f_id[0:4] == 'stim'
+                             and f_id[-5:-4] == exp_type])
+        self.stim_times = [np.loadtxt(st, dtype='string') for st in stim_files]
+        self.movie_id = sorted([directory + '/' + f_id
+                                for f_id in os.listdir(directory)
+                                if (f_id[-5:] == exp_type+'.AVI'
+                                    and f_id[0] == 't')])
 
 # Make these dictionaries so you can put in arbitrary trial / value bindings
 
@@ -196,7 +206,7 @@ class Escapes:
 
     def get_xy_coords(self):
         print self.condition
-        for filenum, xy_file in enumerate(self.xy_files):
+        for filenum, xy_file in enumerate(self.xy_escapes):
             xcoords = []
             ycoords = []
             for coordstring in xy_file:
@@ -261,7 +271,7 @@ class Escapes:
 #        2000 frames of 100 pixel windows, Stim happens after 100 frames. Get exact timing using when the LED reaches steady state.
         # The stimulus itself is 200ms long, and lasts for ~100 frames. The steady state should be taken around 50 frames into the stimulus. 
         stim_times = []
-        for xy_file in self.stim_files:
+        for xy_file in self.stim_times:
             stimdata = np.genfromtxt(xy_file)
             first_half = [np.mean(a[0:50]) for a in partition(100, stimdata)]
             second_half = [np.mean(a[50:]) for a in partition(100, stimdata)]
@@ -328,6 +338,7 @@ class Escapes:
         pl.show()
 
     def get_orientation(self, trial, makevid):
+        use_darkest = False
         # DEFINITELY GOES IN HERE TWICE...FIRST TIME FOR BARRIER TRIAL, SECOND FOR NO BARRIER. OVERWRITES HA1. 
         heading_vec_list = []
         vid_file = self.movie_id[trial]
@@ -337,7 +348,7 @@ class Escapes:
         dr = self.directory
         if makevid:
             ha_vid = cv2.VideoWriter(
-                dr + '/ha' + str(trial+1) + self.condition + '.AVI',
+                dr + '/ha' + str(trial) + self.condition + '.AVI',
                 fourcc, fps, (80, 80), True)
         xy = self.xy_coords_by_trial[trial]
         xcoords = xy[0][self.timerange[0]:self.timerange[1]]
@@ -348,8 +359,25 @@ class Escapes:
             im_color = vid.get_data(self.timerange[0] + frame)
             im = cv2.cvtColor(im_color, cv2.COLOR_BGR2GRAY)
             background_roi = slice_background(self.background, x, y)
-            brsub = cv2.absdiff(im, background_roi)
-            if True:
+            # im_avg = np.median(im)
+            # br_avg = np.median(background_roi)
+            # im_br_ratio = im_avg / br_avg
+            # brsub = cv2.absdiff(im, (
+            #     background_roi * im_br_ratio).astype(np.uint8))
+            brsub = cv2.absdiff(im, background_roi).astype(np.uint8)
+            # if frame % 20 == 0:
+            #     fig = pl.figure()
+            #     ax = fig.add_subplot(121)
+            #     ax2 = fig.add_subplot(122)
+            #     print(np.median(background_roi))
+            #     print(np.median(im))
+            #     print(np.percentile(background_roi, 20))
+            #     print(np.percentile(im, 20))
+            #     ax.imshow(background_roi, 'gray', vmin=0, vmax=255)
+            #     ax2.imshow(im, 'gray', vmin=0, vmax=255)
+            #     pl.show()
+            if use_darkest:
+                brsub = cv2.medianBlur(brsub, 3)
                 drk_x, drk_y = find_darkest_pixel(brsub)
                 cv2.circle(im_color, (drk_x, drk_y), 1, (255, 0, 0), 1)
                 mask = np.ones(im.shape, dtype=np.uint8)
@@ -369,20 +397,56 @@ class Escapes:
                 cv2.circle(im_color, (sb_x, sb_y), 1, (0, 0, 255), 1)
                 vec_heading = np.array([drk_x, drk_y]) - np.array([sb_x, sb_y])
                 heading_vec_list.append(vec_heading)
+            else:
+                fishcont, mid_x, mid_y = contourfinder(brsub, 30)
+                if math.isnan(mid_x):
+                    if makevid:
+                        ha_vid.write(im_color)
+                    heading_vec_list.append([mid_x, mid_y])
+                    continue
+                fish_xy_moments = cv2.moments(fishcont)
+# this center of mass calculation works very well. always puts it between the
+# sb and the eyes
+                fish_com_x = int(fish_xy_moments['m10']/fish_xy_moments['m00'])
+                fish_com_y = int(fish_xy_moments['m01']/fish_xy_moments['m00'])
+                mask = np.ones(im.shape, dtype=np.uint8)
+                for i in range(fish_com_y - 5, fish_com_y + 5):
+                    for j in range(fish_com_x - 5, fish_com_x + 5):
+                        mask[i, j] = 0
+                cv2.multiply(brsub, mask, brsub)
+                eyes_x, eyes_y = find_darkest_pixel(brsub)
+                cv2.circle(im_color, (eyes_x, eyes_y), 1, (255, 0, 0), 1)
+# com actually comes out red, mid blue
+                cv2.circle(im_color,
+                           (fish_com_x, fish_com_y), 1, (0, 0, 255), 1)
+                cv2.drawContours(im_color, [fishcont], -1, (0, 255, 0), 1)
+                vec_heading = np.array(
+                    [eyes_x, eyes_y]) - np.array([fish_com_x, fish_com_y])
+                heading_vec_list.append(vec_heading)
             if makevid:
                 ha_vid.write(im_color)
-#Bizarre -- if i comment this line out above and change to pass, you get a totally different escape...wtf. 
+
         vid.close()
         if makevid:
             ha_vid.release()
+
+# FIRST FILTER THE VECS HERE
+        filt_heading_vec_list = filter_uvec(heading_vec_list)
         heading_angles = [np.arctan2(vec[1], vec[0])
                           if not math.isnan(vec[0])
-                          else float('nan') for vec in heading_vec_list]
+                          else float('nan') for vec in filt_heading_vec_list]
 # yields coords with some negatives in a reverse unit circle (i.e clockwise)
 # have to normalize to put in unit circle coords.
 
+# problem here is that the two points heading_angles is
+# using are too close together.
+# there is only the option really
+# of being directly left, right, top or bottom. OR exactly on.
+# need to get out the orientation of the bounding box.
+
         norm_orientation = [-ang if ang < 0 else 2 * np.pi - ang
                             for ang in heading_angles]
+        
         self.ha_in_timeframe = norm_orientation
 
     def vec_to_barrier(self, trial):
@@ -464,9 +528,9 @@ class Escapes:
         self.get_orientation(trial, True)
         self.vec_to_barrier(trial)
         self.heading_v_barrier(trial)
-        self.find_initial_conditions(trial)
-        self.body_curl(trial)
-        self.find_cstart(trial, plotc)
+#        self.find_initial_conditions(trial)
+#        self.body_curl(trial)
+#        self.find_cstart(trial, plotc)
                 
     def infer_collisions(self, barrier_escape_object, plotornot):
 
@@ -487,7 +551,6 @@ class Escapes:
             turn_ax.set_xlim([-100, 100])
             turn_ax.set_ylim([-100, 100])
             turn_ax.set_aspect('equal')
-        trial_counter = 0
         timerange = self.timerange
         if 0 <= angle < np.pi / 2:
             barrier_x = np.sin(angle) * mag
@@ -705,8 +768,12 @@ class Escapes:
             background_roi = slice_background(self.background, x, 1024-y)
             brsub = cv2.absdiff(im, background_roi)
 #            brsub = gaussian_filter(brsub, 1)
+
+# WOULD BE NICE HERE TO GET LIST OF THRESHOLDS FROM
+# FISH ORIENTATION CODE
+            brsub = cv2.medianBlur(brsub, 3)
             r, im_thresh = cv2.threshold(brsub,
-                                         13,
+                                         40,
                                          255,
                                          cv2.THRESH_BINARY)
             im_thresh, m, c = rotate_image(im_thresh, ha_adj)
@@ -824,6 +891,49 @@ def find_darkest_pixel(im):
     return max_x, max_y
 
 
+    
+        
+def contourfinder(im, threshval):
+#    im = cv2.GaussianBlur(im, (1,1), 0)
+
+# good params at 120 low area and dilate at 3x3
+# try dilate 5x5. works ok with 250. 
+    
+    r, th = cv2.threshold(im, threshval, 255, cv2.THRESH_BINARY)
+    th = cv2.erode(th, np.ones([3, 3]))
+    th = cv2.dilate(th, np.ones([3, 3]))
+    # cv2.namedWindow('thresh', cv2.WINDOW_AUTOSIZE)
+    # cv2.imshow('thresh', th)
+    # cv2.waitKey(20)
+    rim, contours, hierarchy = cv2.findContours(
+        th, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_NONE)
+    contours = sorted(contours, key=cv2.contourArea, reverse=True)
+    cvx_hull_by_area = [cv2.convexHull(cnt) for cnt in contours]
+    areamin = 130
+    areamax = 600
+    contcomp = [x for x in
+                cvx_hull_by_area if areamin < cv2.contourArea(x) < areamax]
+    if contcomp:
+        rect = cv2.minAreaRect(contcomp[0])
+        box = cv2.boxPoints(rect)
+        x, y = np.mean(box, axis=0).astype(np.int)
+        return contours[0], x, y
+# this is a catch for missing the fish
+    if threshval < 3:
+        if areamin * .75 < cv2.contourArea(cvx_hull_by_area[0]) < areamax:
+            rect = cv2.minAreaRect(contours[0])
+            box = cv2.boxPoints(rect)
+            x, y = np.mean(box, axis=0).astype(np.int)
+            return contours[0], x, y
+        else:
+            print('thresh too low')
+
+            return np.array([]), float('NaN'), float('NaN')
+    else:
+        return contourfinder(im, threshval-1)
+
+
+
 def make_segments(x, y):
     '''
     Create list of line segments from x and y coordinates, in the correct format for LineCollection:
@@ -910,8 +1020,19 @@ def filter_list(templist):
     return filtlist
 
 
+def filter_uvec(vecs, sd):
+    filt_sd = sd
+    npvecs = np.array(vecs)
+    filt_vecs = np.copy(npvecs)
+    for i in range(npvecs[0].shape[0]):
+        filt_vecs[:, i] = gaussian_filter(npvecs[:, i], filt_sd)
+    return filt_vecs
+
+
 def slice_background(br, xcrd, ycrd):
-    br_roi = br[int(ycrd)-40:int(ycrd)+40, int(xcrd)-40:int(xcrd)+40]
+    br_roi = np.array(
+        br[int(ycrd)-40:int(ycrd)+40,
+           int(xcrd)-40:int(xcrd)+40]).astype(np.uint8)
     return br_roi
 
 
@@ -985,14 +1106,13 @@ plotcstarts = False
 
 for i in range(len(escape_cond1.xy_coords_by_trial)):
     escape_cond1.trial_analyzer(i, plotcstarts)
-    escape_nb.infer_collisions(escape_cond1, False)
+#    escape_nb.infer_collisions(escape_cond1, False)
 
 for k in range(len(escape_cond2.xy_coords_by_trial)):
     escape_cond2.trial_analyzer(k, plotcstarts)
-    escape_nb.infer_collisions(escape_cond2, False)
+ #   escape_nb.infer_collisions(escape_cond2, False)
     
 for j in range(len(escape_nb.xy_coords_by_trial)):
-    trial_num = j
     escape_nb.trial_analyzer(j, plotcstarts)
 
 # # MAKE SURE THESE ALWAYS COME LAST. IF NOT, HA_IN_TIMEFRAME REMAINS THE LAST TRIAL.
