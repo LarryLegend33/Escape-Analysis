@@ -23,50 +23,6 @@ from scipy.signal import argrelmin, argrelmax, argrelextrema
 # THIS CAN BE USED BUT IT WILL TAKE A LIST OF ESCAPE OBJECTS AND ITERATE THROUGH IT.
 # Also much of its current data is useless. 
 
-def data_output(esc_obj, drc):
-
-    nb_nans = np.full(len(esc_n.xy_coords_by_trial), np.nan).tolist()
-    d_nans =  np.full(len(esc_d.xy_coords_by_trial), np.nan).tolist()
-    h_to_b_l = [i[0] for i in ordered_dic(esc_l, esc_l.init_dict)]
-    h_to_b_d = [i[0] for i in ordered_dic(esc_d, esc_d.init_dict)]
-    h_to_b_all = h_to_b_l + nb_nans + h_to_b_d
-    col_header = trials(esc_l) + trials(esc_n) + trials(esc_d)
-    xyposition = xypos(esc_l) + xypos(esc_n) + xypos(esc_d)
-    barr = esc_l.barrier_xy_by_trial + nb_nans + esc_d.barrier_xy_by_trial
-    latencies = ordered_dic(
-        esc_l,
-        esc_l.escape_latencies) + ordered_dic(
-            esc_n,
-            esc_n.escape_latencies) + ordered_dic(esc_d,
-                                                  esc_d.escape_latencies)
-    latencies = [2*l for l in latencies]
-    c_angles = ordered_dic(
-        esc_l, esc_l.cstart_angles) + ordered_dic(
-            esc_n, esc_n.cstart_angles) + ordered_dic(
-                esc_d, esc_d.cstart_angles)
-    c_to_b = ordered_dic(
-        esc_l,
-        esc_l.cstart_rel_to_barrier) + ordered_dic(
-            esc_n,
-            esc_n.cstart_rel_to_barrier) + ordered_dic(
-                esc_d, esc_d.cstart_rel_to_barrier)
-    titles = ['trial_id',
-              'escape latency',
-              'c_start angle',
-              'heading vs barrier',
-              'CStart Away?']
-    with open(drc + '/escape_data.csv', 'wb') as csvfile:
-        output_data = csv.writer(csvfile)
-        output_data.writerow(titles)
-        for dat in zip(col_header,
-                       xyposition,
-                       barr,
-                       latencies,
-                       f2d(c_angles),
-                       f2d(h_to_b_all),
-                       c_to_b):
-            output_data.writerow(dat)
-    
 
 class Escapes:
 
@@ -269,7 +225,7 @@ class Escapes:
                 float(self.timerange[0]) / 500, float(self.timerange[1]) / 500,
                 .1))
         pl.colorbar(colo)
-        pl.title('Trial' + str(trialnum + 1))
+        pl.title('Trial' + str(trialnum))
         pl.show()
 
     def get_orientation(self, makevid):
@@ -360,12 +316,12 @@ class Escapes:
                 fish_xy = np.array([fish_x, fish_y])
                 b_vec = barr_xy - fish_xy
                 vecs_to_barrier.append(b_vec)
-                angles = [np.arctan2(vec[1], vec[0])
-                          if not math.isnan(vec[0]) else float('nan')
-                          for vec in vecs_to_barrier]
-                transformed_angles = [2*np.pi + ang if ang < 0 else ang
-                                      for ang in angles]
-                self.ba_in_timeframe.append(transformed_angles)
+            angles = [np.arctan2(vec[1], vec[0])
+                      if not math.isnan(vec[0]) else float('nan')
+                      for vec in vecs_to_barrier]
+            transformed_angles = [2*np.pi + ang if ang < 0 else ang
+                                  for ang in angles]
+            self.ba_in_timeframe.append(transformed_angles)
 
     def heading_v_barrier(self):
         for h_angles, b_angles in zip(self.ha_in_timeframe,
@@ -394,9 +350,9 @@ class Escapes:
                     diff = 0
                     right_or_left.append('n')
                 diffs.append(diff)
-                diffs = [-df if dir == 'l' else df
-                         for df, dir in zip(diffs, right_or_left)]
-                self.h_vs_b_by_trial.append(diffs)
+            diffs = [-df if dirc == 'l' else df
+                     for df, dirc in zip(diffs, right_or_left)]
+            self.h_vs_b_by_trial.append(diffs)
 
 # Think of barrier axis as the X axis of the unit circle. ha to the right of the barrier are negative (barrier is left of the fish), while ha to the left of the barrier are positive (barrier is on the right of the fish). 
 
@@ -426,8 +382,6 @@ class Escapes:
         self.vec_to_barrier()
         self.heading_v_barrier()
         self.find_initial_conditions()
-
-# BODY CURL WILL TAKE         
         self.body_curl()
         self.find_cstart(plotc)
                 
@@ -517,7 +471,6 @@ class Escapes:
         turn_ax.set_xlim([-100, 100])
         turn_ax.set_ylim([-100, 100])
         timerange = self.timerange
-        x_avg = []
         for trial, xy_coords in enumerate(self.xy_coords_by_trial):
             ha_init = self.initial_conditions[trial][0]
             if not math.isnan(ha_init):
@@ -527,7 +480,6 @@ class Escapes:
                     [x for [x, y] in escape_coords[timerange[0]:timerange[1]]])
 #                print(x_escape[0:10])
                 x_escape = x_escape - x_escape[0]
-                x_avg.append(np.nanmean(x_escape[self.pre_c:self.pre_c+25]))
                 y_escape = np.array(
                     [y for [x, y] in escape_coords[timerange[0]:timerange[1]]])
                 y_escape = y_escape - y_escape[0]
@@ -541,7 +493,6 @@ class Escapes:
                     size=10,
                     backgroundcolor='w')
         pl.show()
-        print x_avg
         
     def escapes_vs_barrierloc(self):
         turn_fig = pl.figure()
@@ -549,7 +500,6 @@ class Escapes:
         turn_ax.set_xlim([-100, 100])
         turn_ax.set_ylim([-100, 100])
         timerange = self.timerange
-        x_avg = []
         l_or_r = []
         for trial in range(len(self.xy_coords_by_trial)):
             to_barrier_init = self.initial_conditions[trial][0]
@@ -560,9 +510,7 @@ class Escapes:
                 escape_coords = rotate_coords(zipped_coords, -ha_init)
                 x_escape = np.array(
                     [x for [x, y] in escape_coords[timerange[0]:timerange[1]]])
-#                print(x_escape[0:10])
                 x_escape = x_escape - x_escape[0]
-                x_avg.append(np.nanmean(x_escape[self.pre_c:self.pre_c+25]))
                 y_escape = np.array(
                     [y for [x, y] in escape_coords[timerange[0]:timerange[1]]])
                 y_escape = y_escape - y_escape[0]
@@ -588,7 +536,6 @@ class Escapes:
                         str(trial),
                         size=10,
                         backgroundcolor='w')
-        print x_avg
         print l_or_r
         pl.show()
 
