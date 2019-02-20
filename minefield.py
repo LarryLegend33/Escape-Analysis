@@ -37,14 +37,19 @@ class Escapes:
         self.pre_escape_bouts = []
         self.stim_init_times = []
         self.escape_latencies = []
+        if exp_type in ['l', 'd']:
+            bstruct_and_br_label = 'b'
+        elif exp_type in ['v', 'i']:
+            bstruct_and_br_label = 'v'
         self.barrier_file = np.loadtxt(
-            directory + '/barrierstruct_' + exp_type + '.txt',
+            directory + '/barrierstruct_' + bstruct_and_br_label + '.txt',
             dtype='string')
         self.barrier_coordinates = []
         self.barrier_diam = 0
         self.barrier_xy_by_trial = []
         print self.directory
-        back_color = cv2.imread(directory + '/background_' + exp_type + '.tif')
+        back_color = cv2.imread(
+            directory + '/background_' + bstruct_and_br_label + '.tif')
         print(back_color.shape)
         self.background = cv2.cvtColor(back_color, cv2.COLOR_BGR2GRAY)
         pre_escape_files = sorted([directory + '/' + f_id
@@ -906,7 +911,7 @@ if __name__ == '__main__':
     escape_cond1 = Escapes('v', esc_dir, area_thresh)
     escape_cond2 = Escapes('i', esc_dir, area_thresh)
     escape_nb = Escapes('n', esc_dir, area_thresh)
-    plotcstarts = False
+    plotcstarts = True
 
     escape_cond1.trial_analyzer(plotcstarts)
 #    escape_nb.infer_collisions(escape_cond1, False)
