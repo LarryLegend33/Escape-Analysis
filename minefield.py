@@ -18,7 +18,7 @@ from collections import deque
 from toolz.itertoolz import sliding_window, partition
 from scipy.ndimage import gaussian_filter
 from scipy.signal import argrelmin, argrelmax, argrelextrema
-
+from astropy.convolution import convolve, Gaussian1DKernel
 
 # THIS CAN BE USED BUT IT WILL TAKE A LIST OF ESCAPE OBJECTS AND ITERATE THROUGH IT.
 # Also much of its current data is useless. 
@@ -33,6 +33,8 @@ class Escapes:
         self.timerange = [100, 150]
         self.condition = exp_type
         self.xy_coords_by_trial = []
+        self.missed_inds_by_trial = []
+        self.contours_by_trial = []
     # this asks whether there is a bias in direction based on the HBO. 
         self.pre_escape_bouts = []
         self.stim_init_times = []
@@ -41,6 +43,8 @@ class Escapes:
             bstruct_and_br_label = 'b'
         elif exp_type in ['v', 'i']:
             bstruct_and_br_label = 'v'
+        else:
+            bstruct_and_br_label = exp_type
         self.barrier_file = np.loadtxt(
             directory + '/barrierstruct_' + bstruct_and_br_label + '.txt',
             dtype='string')
@@ -48,10 +52,14 @@ class Escapes:
         self.barrier_diam = 0
         self.barrier_xy_by_trial = []
         print self.directory
-        back_color = cv2.imread(
-            directory + '/background_' + bstruct_and_br_label + '.tif')
-        print(back_color.shape)
-        self.background = cv2.cvtColor(back_color, cv2.COLOR_BGR2GRAY)
+        background_files = sorted([directory + '/' + f_id
+                                   for f_id in os.listdir(directory)
+                                   if f_id[0:10] == 'background'
+                                   and f_id[-5:-4] == exp_type])
+        back_color_files = [cv2.imread(fil) for fil in background_files]
+        self.backgrounds = [cv2.cvtColor(back_color,
+                                         cv2.COLOR_BGR2GRAY)
+                            for back_color in back_color_files]
         pre_escape_files = sorted([directory + '/' + f_id
                                    for f_id in os.listdir(directory)
                                    if f_id[0:15] == 'fishcoords_gray'
@@ -116,8 +124,12 @@ class Escapes:
                 x, y = x_and_y_coord(coordstring)
                 xcoords.append(x)
                 ycoords.append(y)
-            self.xy_coords_by_trial.append([xcoords, ycoords])
-
+            print filenum
+            xc_trial, yc_trial, missed_inds = outlier_filter(xcoords,
+                                                             ycoords, [])
+            self.xy_coords_by_trial.append([xc_trial,
+                                            yc_trial])
+            self.missed_inds_by_trial.append(missed_inds)
 #MAKE THIS A NEW FUNCTION THAT CALCULATES THE MOST RECENT 3 BOUTS. 
 #         stim_onset = self.timerange[0]
 #         for filenum, pre_xy_file in enumerate(self.pre_escape):
@@ -237,6 +249,7 @@ class Escapes:
         for trial, (vid_file, xy) in enumerate(
                 zip(self.movie_id, self.xy_coords_by_trial)):
             heading_vec_list = []
+            contour_list = []
             fps = 500
             vid = imageio.get_reader(vid_file, 'ffmpeg')
             fourcc = cv2.VideoWriter_fourcc('M', 'J', 'P', 'G')
@@ -250,27 +263,38 @@ class Escapes:
                     fourcc, fps, (80, 80), True)
             xcoords = xy[0][self.timerange[0]:self.timerange[1]]
             ycoords = xy[1][self.timerange[0]:self.timerange[1]]
+            missed_inds_trial = self.missed_inds_by_trial[trial]
     # the arrays are indexed in reverse from how you'd like to plot.
             for frame, (x, y) in enumerate(zip(xcoords, ycoords)):
                 y = 1024 - y
                 im_color = vid.get_data(self.timerange[0] + frame)
                 im = cv2.cvtColor(im_color, cv2.COLOR_BGR2GRAY)
-                background_roi = slice_background(self.background, x, y)
+                try:
+                    background_roi = slice_background(
+                        self.backgrounds[trial], x, y)
+                except IndexError:
+                    background_roi = slice_background(
+                        self.backgrounds[trial-1], x, y)
                 brsub = cv2.absdiff(im, background_roi).astype(np.uint8)
-
-                    # fig = pl.figure()
-                    # ax = fig.add_subplot(121)
-                    # ax2 = fig.add_subplot(122)
-                    # ax.imshow(background_roi, 'gray', vmin=0, vmax=255)
-                    # ax2.imshow(im, 'gray', vmin=0, vmax=255)
-                    # pl.show()
                 fishcont, mid_x, mid_y, th = self.contourfinder(brsub, 30)
+                contour_list.append(fishcont)
                 th = cv2.cvtColor(th, cv2.COLOR_GRAY2RGB)
+                if frame in missed_inds_trial:
+                    heading_vec_list.append([np.nan, np.nan])
+                    if makevid:
+                        ha_vid.write(np.zeros(
+                            [im_color.shape[0],
+                             im_color.shape[1],
+                             im_color.shape[2]]).astype(np.uint8))
+                        thresh_vid.write(np.zeros(
+                            [th.shape[0],
+                             th.shape[1]]).astype(np.uint8))
+                    continue
                 if math.isnan(mid_x):
+                    heading_vec_list.append([mid_x, mid_y])
                     if makevid:
                         ha_vid.write(im_color)
                         thresh_vid.write(th)
-                    heading_vec_list.append([mid_x, mid_y])
                     continue
                 fish_xy_moments = cv2.moments(fishcont)
                 fish_com_x = int(fish_xy_moments['m10']/fish_xy_moments['m00'])
@@ -310,7 +334,8 @@ class Escapes:
             norm_orientation = [-ang if ang < 0 else 2 * np.pi - ang
                                 for ang in heading_angles]
             self.ha_in_timeframe.append(norm_orientation)
-
+            self.contours_by_trial.append(contour_list)
+            
     def vec_to_barrier(self):
         for trial, xy in enumerate(self.xy_coords_by_trial):
             vecs_to_barrier = []
@@ -449,8 +474,8 @@ class Escapes:
                         collision_trials.append(trial_counter)
                 if plotornot:
                     turn_ax.plot(
-                        outlier_filter(x_escape),
-                        outlier_filter(y_escape), 'g')
+                        x_escape,
+                        y_escape, 'g')
                     turn_ax.text(
                         x_escape[-1],
                         y_escape[-1],
@@ -489,8 +514,8 @@ class Escapes:
                     [y for [x, y] in escape_coords[timerange[0]:timerange[1]]])
                 y_escape = y_escape - y_escape[0]
                 turn_ax.plot(
-                    outlier_filter(x_escape),
-                    outlier_filter(y_escape), 'g')
+                    x_escape,
+                    y_escape, 'g')
                 turn_ax.text(
                     x_escape[-1],
                     y_escape[-1],
@@ -522,8 +547,8 @@ class Escapes:
                 if to_barrier_init < 0:
                     l_or_r.append('l')
                     turn_ax.plot(
-                        outlier_filter(x_escape),
-                        outlier_filter(y_escape), 'b')
+                        x_escape,
+                        y_escape, 'b')
                     turn_ax.text(
                         x_escape[-1],
                         y_escape[-1],
@@ -533,8 +558,8 @@ class Escapes:
                 elif to_barrier_init > 0:
                     l_or_r.append('r')
                     turn_ax.plot(
-                        outlier_filter(x_escape),
-                        outlier_filter(y_escape), 'm')
+                        x_escape,
+                        y_escape, 'm')
                     turn_ax.text(
                         x_escape[-1],
                         y_escape[-1],
@@ -583,42 +608,88 @@ class Escapes:
             else:
                 self.cstart_rel_to_barrier.append(np.nan)
 
-    def contourfinder(self, im, threshval):
-
+    def contourfinder(self, im, *threshval):
+        
+        def cont_distance(cont_list, xy_center):
+            for cont in cont_list:
+                rect = cv2.minAreaRect(cont)
+                box = cv2.boxPoints(rect)
+                xcont, ycont = np.mean(box, axis=0).astype(np.int)
+                vec_dist = [xy_center[0] - xcont, xy_center[1] - ycont]
+                if magvector(vec_dist) < 10:
+                    return cont, xcont, ycont
+            return [], np.nan, np.nan
         # good params at 120 low area and dilate at 3x3
         # try dilate 5x5. works ok with 250.
-        r, th = cv2.threshold(im, threshval, 255, cv2.THRESH_BINARY)
-        th = cv2.erode(th, np.ones([3, 3]))
-        th = cv2.dilate(th, np.ones([3, 3]))
+        xy_cent = [40, 40]
+        if threshval != ():
+            threshval = threshval[0]
+            r, th = cv2.threshold(im, threshval, 255, cv2.THRESH_BINARY)
+#            th = cv2.erode(th, np.ones([3, 3]))
+#            th = cv2.dilate(th, np.ones([3, 3]))
+#            th = cv2.medianBlur(th, 3)
+
+
+        else:
+            th = im
         # cv2.namedWindow('thresh', cv2.WINDOW_AUTOSIZE)
         # cv2.imshow('thresh', th)
         # cv2.waitKey(20)
         rim, contours, hierarchy = cv2.findContours(
-            th, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_NONE)
+            th, cv2.RETR_LIST, cv2.CHAIN_APPROX_NONE)
         contours = sorted(contours, key=cv2.contourArea, reverse=True)
-        cvx_hull_by_area = [cv2.convexHull(cnt) for cnt in contours]
         areamin = self.area_thresh
-        areamax = 600
-        contcomp = [x for x in
-                    cvx_hull_by_area if areamin < cv2.contourArea(x) < areamax]
+        areamax = 100
+        contcomp = [cnt for cnt in
+                    contours if areamin < cv2.contourArea(
+                        cnt) < areamax]
+
+        
+        # if threshval == 20:
+        #     print contours
+        #     th_color = cv2.cvtColor(th, cv2.COLOR_GRAY2RGB)
+        #     cv2.drawContours(th_color, [contours[0]], -1, (0, 255, 0), 1)
+        #     cv2.imshow('', th_color)
+        #     cv2.waitKey(0)
+        #     print(cv2.contourArea(contours[0]))
+#        cvx_hull_by_area = [cv2.convexHull(cnt) for cnt in contours]        
+        # contcomp = [cnt for cnt in
+        #             cvx_hull_by_area if areamin < cv2.contourArea(
+        #                 cnt) < areamax]
         if contcomp:
-            rect = cv2.minAreaRect(contcomp[0])
-            box = cv2.boxPoints(rect)
-            x, y = np.mean(box, axis=0).astype(np.int)
-            return contours[0], x, y, th
+            fishcont, x, y = cont_distance(contcomp, xy_cent)
+            if math.isnan(x):
+                if threshval == ():
+                    return fishcont, x, y, th
+                else:
+                    return self.contourfinder(im, threshval-1)
+            else:
+                np.save('fishcont.npy', fishcont)
+                return fishcont, x, y, th
     # this is a catch for missing the fish
-        if threshval < 3:
-            if areamin * .75 < cv2.contourArea(cvx_hull_by_area[0]) < areamax:
-                rect = cv2.minAreaRect(contours[0])
-                box = cv2.boxPoints(rect)
-                x, y = np.mean(box, axis=0).astype(np.int)
-                return contours[0], x, y, th
+        if threshval < 15:
+            # if areamin * .75 < cv2.contourArea(cvx_hull_by_area[0]) < areamax:
+            #     fishcont, x, y = cont_distance(cvx_hull_by_area[0], xy_cent)
+            if areamin * .75 < cv2.contourArea(contours[0]) < areamax:
+                fishcont, x, y = cont_distance(contours[0], xy_cent)
+                if math.isnan(x):
+                    return np.array([]), float('NaN'), float('NaN'), np.zeros(
+                        [im.shape[0], im.shape[1]]).astype(np.uint8)
+                else:
+                    return contours[0], x, y, th
             else:
                 print('thresh too low')
                 return np.array([]), float('NaN'), float('NaN'), np.zeros(
                     [im.shape[0], im.shape[1]]).astype(np.uint8)
         else:
-            return self.contourfinder(im, threshval-1)
+            if threshval != ():
+                return self.contourfinder(im, threshval-1)
+            else:
+                print('returning nothing')
+                if contours:
+                    print(cv2.contourArea(contours[0]))
+                return np.array([]), float('NaN'), float('NaN'), np.zeros(
+                    [im.shape[0], im.shape[1]]).astype(np.uint8)
 
 
     def body_curl(self):
@@ -649,21 +720,22 @@ class Escapes:
                 ha_adj = ha_adjusted.popleft()
                 im_color = threshvid.get_data(frame)
                 im = cv2.cvtColor(im_color, cv2.COLOR_BGR2GRAY)
-                r, im_thresh = cv2.threshold(im, 120, 255, cv2.THRESH_BINARY)
-                im_thresh, m, c = rotate_image(im_thresh, ha_adj)
-                im_thresh_color = cv2.cvtColor(im_thresh, cv2.COLOR_GRAY2RGB)
-# refinding here is easier than storing the contour then rotating both the image and the contour.                 
-                r, body_cont, hier = cv2.findContours(im_thresh,
-                                                      cv2.RETR_EXTERNAL,
-                                                      cv2.CHAIN_APPROX_NONE)
-                size_filtered_contours = [j for j in body_cont
-                                          if self.area_thresh * .5 < cv2.contourArea(j) < 500]
-                if not size_filtered_contours:
-                    sum_angles.append(float('nan'))
-                    cstart_vid.write(im_thresh_color)
+                im_rot, m, c = rotate_image(im, ha_adj)
+                im_rot_color = cv2.cvtColor(im_rot, cv2.COLOR_GRAY2RGB)
+                
+                # # refinding here is easier than storing the contour then rotating both the image and the contour
+                body_unrotated = self.contours_by_trial[trial][frame]
+                body = rotate_contour(im, ha_adj, body_unrotated)
+                # if self.condition == 'd' and trial == 2 and math.isnan(ha_adj):
+                #     print ha_adj
+                #     print body
+                #     print("ha messed")
+                if body.shape[0] == 0:
+                    sum_angles.append(np.nan)
+                    cstart_vid.write(im_rot_color)
                     continue
 # now find the point on the contour that has the smallest y coord (i.e. is closest to the top). may be largest y coord?
-                body = size_filtered_contours[0]
+
                 body_perimeter = cv2.arcLength(body, True)
                 highest_pt = np.argmin([bp[0][1] for bp in body])
                 body = np.concatenate([body[highest_pt:], body[0:highest_pt]])
@@ -685,17 +757,16 @@ class Escapes:
 
 # First point inside head is unreliable. take 1:
                 for bp in avg_body_points:
-                    cv2.ellipse(im_thresh_color,
+                    cv2.ellipse(im_rot_color,
                                 (bp[0], bp[1]),
                                 (1, 1), 0, 0, 360, (255, 0, 255), -1)
-                cstart_vid.write(im_thresh_color)
-            
+                cv2.drawContours(im_rot_color, [body], -1, (0, 255, 0), 1)
+                cstart_vid.write(im_rot_color)
                 body_gen = toolz.itertoolz.sliding_window(2, avg_body_points)
                 body_point_diffs = [
                     (0, 1)] + [
                         (b[0]-a[0], b[1]-a[1]) for a, b in body_gen]
     #            print body_point_diffs
-
                 angles = []
                 # Angles are correct given body_points. 
                 for vec1, vec2 in toolz.itertoolz.sliding_window(
@@ -703,10 +774,13 @@ class Escapes:
                     dp = np.dot(vec1, vec2)
                     mag1 = np.sqrt(np.dot(vec1, vec1))
                     mag2 = np.sqrt(np.dot(vec2, vec2))
-                    ang = np.arccos(dp / (mag1*mag2))
+                    try:
+                        ang = np.arccos(dp / (mag1*mag2))
+                    except FloatingPointError:
+                        angles.append(np.nan)
+                        continue
                     if np.cross(vec1, vec2) > 0:
                         ang *= -1
-                    print ang
                     angles.append(np.degrees(ang))
                 cnt += 1
                 all_angles.append(angles)
@@ -821,10 +895,27 @@ def rotate_coords(coords, angle):
     return rotated_coords
 
 
-def outlier_filter(coords):
-    coords = [a if abs(b - a) < 100 else float('nan')
-              for a, b in toolz.itertoolz.sliding_window(2, coords)]
-    return coords
+def outlier_filter(xcoords, ycoords, missed_inds):
+    new_x = [xcoords[0]]
+    new_y = [ycoords[0]]
+    for i, crds in enumerate(zip(xcoords[1:], ycoords[1:])):
+        diff_vec = [crds[0] - new_x[-1], crds[1] - new_y[-1]]
+        vmag = magvector(diff_vec)
+        if i == len(xcoords) - 1:
+            return new_x, new_y, missed_inds
+        elif vmag < 100:
+            new_x.append(crds[0])
+            new_y.append(crds[1])
+        else:
+            print i
+            print vmag
+            missed_inds.append(i)
+            new_x.append(new_x[-1])
+            new_y.append(new_y[-1])
+            xcoords = new_x + xcoords[i+2:]
+            ycoords = new_y + ycoords[i+2:]
+            return outlier_filter(xcoords, ycoords, missed_inds)
+    return new_x, new_y, missed_inds
 
 
 def filter_list(templist):
@@ -833,12 +924,13 @@ def filter_list(templist):
 
 
 def filter_uvec(vecs, sd):
-    
+    gkern = Gaussian1DKernel(sd)
     filt_sd = sd
     npvecs = np.array(vecs)
     filt_vecs = np.copy(npvecs)
     for i in range(npvecs[0].shape[0]):
-        filt_vecs[:, i] = gaussian_filter(npvecs[:, i], filt_sd)
+#        filt_vecs[:, i] = gaussian_filter(npvecs[:, i], filt_sd)
+        filt_vecs[:, i] = convolve(npvecs[:, i], gkern)
     return filt_vecs
 
 
@@ -867,12 +959,28 @@ def x_and_y_coord(coord):
     return float(xcoord), 1024 - float(ycoord)
 
 
-def rotate_image(image, angle):
+def rotate_image(image, angle, *contour):
     image_center = tuple(np.array(image.shape) / 2)
     rot_mat = cv2.getRotationMatrix2D(image_center, angle, scale=1.0)
-    result = cv2.warpAffine(
-        image, rot_mat, image.shape, flags=cv2.INTER_LINEAR)
+    if contour != ():
+        result = cv2.warpAffine(
+                contour[0], rot_mat, contour[0].shape, flags=cv2.INTER_LINEAR)
+    else:
+        result = cv2.warpAffine(
+                image, rot_mat, image.shape, flags=cv2.INTER_LINEAR)
     return result, rot_mat, image_center
+
+
+def rotate_contour(image, angle, contour):
+    rotated_contour = []
+    image_center = tuple(np.array(image.shape) / 2)
+    rot_mat = cv2.getRotationMatrix2D(image_center, angle, scale=1.0)
+    A = rot_mat[0:2, 0:2]
+    B = rot_mat[:, 2].reshape(-1, 1)
+    for contpoint in contour:
+        new_point = np.matmul(A, contpoint.reshape(-1, 1)) + B
+        rotated_contour.append([[new_point[0][0], new_point[1][0]]])
+    return np.array(rotated_contour).astype(np.int32)
 
 
 def plot_h_vs_b(obj):
@@ -902,30 +1010,31 @@ def magvector(vec):
 if __name__ == '__main__':
 
 # 130 works best for 102818_3
-    
-    fish_id = '/102318_2'
+    np.seterr(all='raise')
+    fish_id = '/022519_1'
     pl.ioff()
     os.chdir('/Users/nightcrawler2/Escape-Analysis/')
-    area_thresh = 130
+    area_thresh = 47
     esc_dir = os.getcwd() + fish_id
-    escape_cond1 = Escapes('v', esc_dir, area_thresh)
-    escape_cond2 = Escapes('i', esc_dir, area_thresh)
-    escape_nb = Escapes('n', esc_dir, area_thresh)
-    plotcstarts = True
-
+    # escape_cond1 = Escapes('v', esc_dir, area_thresh)
+    # escape_cond2 = Escapes('i', esc_dir, area_thresh)
+    escape_cond1 = Escapes('l', esc_dir, area_thresh)
+    escape_cond2 = Escapes('d', esc_dir, area_thresh)
+#    escape_nb = Escapes('n', esc_dir, area_thresh)
+    plotcstarts = False
     escape_cond1.trial_analyzer(plotcstarts)
 #    escape_nb.infer_collisions(escape_cond1, False)
 
     escape_cond2.trial_analyzer(plotcstarts)
  #   escape_nb.infer_collisions(escape_cond2, False)
     
-    escape_nb.trial_analyzer(plotcstarts)
+ #   escape_nb.trial_analyzer(plotcstarts)
 
 # # MAKE SURE THESE ALWAYS COME LAST. IF NOT, HA_IN_TIMEFRAME REMAINS THE LAST TRIAL.
 
     escape_cond1.escapes_vs_barrierloc()
     escape_cond2.escapes_vs_barrierloc()
-    escape_nb.control_escapes()
+  #  escape_nb.control_escapes()
 #    data_output(escape_cond1, escape_nb, escape_cond2, esc_dir)
 
 
