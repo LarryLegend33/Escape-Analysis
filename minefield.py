@@ -50,6 +50,14 @@ class Escapes:
         self.barrier_file = np.loadtxt(
             directory + '/barrierstruct_' + bstruct_and_br_label + '.txt',
             dtype='string')
+        if exp_type in ['l', 'n']:
+            self.numgrayframes = np.loadtxt(
+                directory + '/numframesgray_' + exp_type + '.txt',
+                dtype='string')
+        elif exp_type == 'd':
+            self.numgrayframes = np.loadtxt(
+                directory + '/numframesgray_dark.txt',
+                dtype='string')
         self.barrier_coordinates = []
         self.barrier_diam = 0
         self.barrier_xy_by_trial = []
@@ -907,6 +915,11 @@ def magvector(vec):
 
 
 def experiment_collector(drct_list):
+
+# last thing we want here is the cstart directions.
+# 1 is away, 0 is towards. want a barplot w/ errorbar for each fish.
+# can probably do by percentage? do all in one barplot with percent away vs towards.
+
     hb_l = []
     hb_d = []
     hb_n = []
@@ -916,6 +929,26 @@ def experiment_collector(drct_list):
     barr_left_d = []
     barr_right_n = []
     barr_left_n = []
+    cstart_percentage_l = []
+    cstart_percentage_d = []
+    cstart_percentage_n = []
+    cstart_timing_l = []
+    cstart_timing_d = []
+    cstart_timing_n = []
+    cstart_angle_l = []
+    cstart_angle_d = []
+    cstart_angle_n = []
+    entries_into_center_l = []
+    entries_into_center_d = []
+    entries_into_center_n = []
+    time_per_entry_l = []
+    time_per_entry_d = []
+    time_per_entry_n = []
+    
+    
+    # cstart angle is also stored. can infer right or left from that.
+    # may be a good idea to show for n barrier trials
+    
     for drct in drct_list:
         try:
             esc_l = pickle.load(open(
@@ -924,6 +957,14 @@ def experiment_collector(drct_list):
             br_l, bl_l = esc_l.escapes_vs_barrierloc(1)
             barr_right_l += br_l
             barr_left_l += bl_l
+            cstart_percentage_l.append(np.sum(
+                esc_l.cstart_rel_to_barrier) / float(
+                    len(esc_l.cstart_rel_to_barrier)))
+            cstart_timing_l += esc_l.escape_latencies
+            cstart_angle_l += esc_l.cstart_angles
+            entries_into_center_l += len(esc_l.numgrayframes)
+            time_per_entry_l += esc_l.numgrayframes
+            
         except IOError:
             pass
         try:
@@ -933,6 +974,14 @@ def experiment_collector(drct_list):
             br_d, bl_d = esc_d.escapes_vs_barrierloc(1)
             barr_right_d += br_d
             barr_left_d += bl_d
+            cstart_percentage_d.append(np.sum(
+                esc_d.cstart_rel_to_barrier) / float(
+                    len(esc_d.cstart_rel_to_barrier)))
+            cstart_timing_d += esc_d.escape_latencies
+            cstart_angle_d += esc_d.cstart_angles
+            entries_into_center_d += len(esc_d.numgrayframes)
+            time_per_entry_d += esc_d.numgrayframes
+
         except IOError:
             pass
         try:
@@ -942,51 +991,99 @@ def experiment_collector(drct_list):
             br_n, bl_n = esc_n.escapes_vs_barrierloc(1)
             barr_right_n += br_d
             barr_left_n += bl_d
+            cstart_percentage_n.append(np.sum(
+                esc_n.cstart_rel_to_barrier) / float(
+                    len(esc_n.cstart_rel_to_barrier)))
+            cstart_timing_n += esc_n.escape_latencies
+            cstart_angle_n += esc_n.cstart_angles
+            entries_into_center_n += len(esc_n.numgrayframes)
+            time_per_entry_n += esc_n.numgrayframes
 
         except IOError:
             pass
-        
-    fig, axes = pl.subplots(3, 1, sharex=True)
+
+    cpal = sb.color_palette()
+    fig, axes = pl.subplots(1, 1)
+    axes.set_title('Fish Orientation vs. Barrier (rad)')
     fig2, axes2 = pl.subplots(1, 3, sharex=True, sharey=True)
+    fig2.suptitle('Escape vs. Barrier Location')
     axes2[0].set_xlim([-100, 100])
     axes2[0].set_ylim([-100, 100])
     axes2[0].set_aspect('equal')
     axes2[1].set_aspect('equal')
     axes2[2].set_aspect('equal')
-
-    print hb_l
+    
     try:
-        sb.tsplot(np.array(hb_l), ax=axes[0])
+        sb.tsplot(np.array(hb_l), ax=axes)
         for r_coords, l_coords in izip_longest(barr_left_l, barr_right_l):
             if r_coords is not None:
-                axes2[0].plot(r_coords[0], r_coords[1], 'm')
+                axes2[0].plot(r_coords[0], r_coords[1],
+                              color=np.array(cpal[0]) * .5)
             if l_coords is not None:
-                axes2[0].plot(l_coords[0], l_coords[1], 'b')
+                axes2[0].plot(l_coords[0], l_coords[1],
+                              color=cpal[0] * 1 / np.max(cpal[0]))
     except RuntimeError:
         pass
+    
     try:
-        sb.tsplot(np.array(hb_d), ax=axes[1])
+        sb.tsplot(np.array(hb_d), ax=axes, color=cpal[1])
         for r_coords, l_coords in izip_longest(barr_left_d, barr_right_d):
             if r_coords is not None:
-                axes2[1].plot(r_coords[0], r_coords[1], 'm')
+                axes2[1].plot(r_coords[0], r_coords[1],
+                              color=np.array(cpal[1]) * .5)
             if l_coords is not None:
-                axes2[1].plot(l_coords[0], l_coords[1], 'b')
-
+                axes2[1].plot(l_coords[0], l_coords[1],
+                              color=cpal[1] * 1 / np.max(cpal[1]))
     except RuntimeError:
         pass
+    
     try:
-        sb.tsplot(np.array(hb_n), ax=axes[2])
+        sb.tsplot(np.array(hb_n), ax=axes, color=cpal[2])
         for r_coords, l_coords in izip_longest(barr_left_n, barr_right_n):
             if r_coords is not None:
-                axes2[2].plot(r_coords[0], r_coords[1], 'm')
+                axes2[2].plot(r_coords[0], r_coords[1],
+                              color=np.array(cpal[2]) * .5)
             if l_coords is not None:
-                axes2[2].plot(l_coords[0], l_coords[1], 'b')
-
+                axes2[2].plot(l_coords[0], l_coords[1],
+                              color=cpal[2] * 1 / np.max(cpal[2]))
     except RuntimeError:
         pass
+
+    barfig, barax = pl.subplots(1, 5)
+    barax[0].set_title('% CStart Away from Barrier')
+    barax[1].set_title('CStart Latency (ms)')
+    barax[2].set_title('CStart Angle (deg)')
+    barax[3].set_title('# Entires to Barrier Zone')
+    barax[4].set_title('Time Spent in Barrier Zone')
+    sb.barplot(data=[cdir for cdir in [cstart_percentage_l,
+                                       cstart_percentage_d,
+                                       cstart_percentage_n]
+                     if cdir != []], ax=barax[0])
+    sb.violinplot(data=[2*np.array(clat) for clat in [cstart_timing_l,
+                                                      cstart_timing_d,
+                                                      cstart_timing_n]
+                        if clat != []],
+                  ax=barax[1])
+    sb.violinplot(data=[cang for cang in [cstart_angle_l,
+                                          cstart_angle_d,
+                                          cstart_angle_n] if cang != []],
+                  ax=barax[2])
+    sb.violinplot(data=[num_entries for num_entries in [entries_into_center_l,
+                                                        entries_into_center_d,
+                                                        entries_into_center_n]
+                        if num_entries != []], ax=barax[3])
+    sb.violinplot(data=[dur for dur in [time_per_entry_l,
+                                        time_per_entry_d,
+                                        time_per_entry_n] if dur != []],
+                  ax=barax[4])
+
+    pl.tight_layout()
     pl.show()
-        
+
+    
 if __name__ == '__main__':
+
+    experiment_collector(['022519_1'])
 
     np.seterr(all='raise')
     fish_id = '/022519_1'
@@ -996,17 +1093,17 @@ if __name__ == '__main__':
     esc_dir = os.getcwd() + fish_id
     escape_cond1 = Escapes('l', esc_dir, area_thresh)
     escape_cond2 = Escapes('d', esc_dir, area_thresh)
-#    escape_nb = Escapes('n', esc_dir, area_thresh
-    plotcstarts = False
+# #    escape_nb = Escapes('n', esc_dir, area_thresh
+    plotcstarts = True
     escape_cond1.trial_analyzer(plotcstarts)
-#    escape_nb.infer_collisions(escape_cond1, False)
+# #    escape_nb.infer_collisions(escape_cond1, False)
     escape_cond2.trial_analyzer(plotcstarts)
  #   escape_nb.infer_collisions(escape_cond2, False)
  #   escape_nb.trial_analyzer(plotcstarts)
-    escape_cond1.escapes_vs_barrierloc()
-    escape_cond2.escapes_vs_barrierloc()
+#    escape_cond1.escapes_vs_barrierloc()
+#    escape_cond2.escapes_vs_barrierloc()
   #  escape_nb.control_escapes()
 #    data_output(escape_cond1, escape_nb, escape_cond2, esc_dir)
 
-    escape_cond1.exporter()
-    escape_cond2.exporter()
+#    escape_cond1.exporter()
+#    escape_cond2.exporter()
