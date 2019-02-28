@@ -5,10 +5,8 @@ import math
 from matplotlib import pyplot as pl
 from matplotlib.cm import ScalarMappable
 from matplotlib.collections import LineCollection
-from matplotlib.colors import ListedColormap, BoundaryNorm
-from matplotlib.image import AxesImage
-from matplotlib.colors import Colormap
-import seaborn
+import seaborn as sb
+import copy
 import cv2
 import toolz
 import scipy.ndimage
@@ -19,6 +17,10 @@ from toolz.itertoolz import sliding_window, partition
 from scipy.ndimage import gaussian_filter
 from scipy.signal import argrelmin, argrelmax, argrelextrema
 from astropy.convolution import convolve, Gaussian1DKernel
+from matplotlib.colors import ListedColormap, BoundaryNorm
+from matplotlib.image import AxesImage
+from matplotlib.colors import Colormap
+from itertools import izip_longest
 
 # THIS CAN BE USED BUT IT WILL TAKE A LIST OF ESCAPE OBJECTS AND ITERATE THROUGH IT.
 # Also much of its current data is useless. 
@@ -93,6 +95,16 @@ class Escapes:
         self.initial_conditions = []
         self.load_experiment()
 
+    def h_vs_b_plot(self, plot_fish):
+        # h_vs_b_mod = [np.mod(
+        #     hb_trial, 2*np.pi) for hb_trial in self.h_vs_b_by_trial]
+        h_vs_b_mod = [np.abs(hb_trial) for hb_trial in self.h_vs_b_by_trial]
+        if plot_fish:
+            sb.tsplot(h_vs_b_mod)
+            pl.show()
+        else:
+            return h_vs_b_mod
+        
     def load_experiment(self):
         self.get_xy_coords()
         self.load_barrier_info()
@@ -100,7 +112,8 @@ class Escapes:
         self.get_stim_times(False)
 
     def exporter(self):
-        with open('escapes' + self.condition + '.pkl', 'wb') as file:
+        with open(self.directory + '/escapes_' +
+                  self.condition + '.pkl', 'wb') as file:
             pickle.dump(self, file)
 
     def load_barrier_info(self):
@@ -130,54 +143,7 @@ class Escapes:
             self.xy_coords_by_trial.append([xc_trial,
                                             yc_trial])
             self.missed_inds_by_trial.append(missed_inds)
-#MAKE THIS A NEW FUNCTION THAT CALCULATES THE MOST RECENT 3 BOUTS. 
-#         stim_onset = self.timerange[0]
-#         for filenum, pre_xy_file in enumerate(self.pre_escape):
-#             pre_xcoords = []
-#             pre_ycoords = []
-#             for coordstring in pre_xy_file:
-#                 x, y = x_and_y_coord(coordstring)
-#                 pre_xcoords.append(x)
-#                 pre_ycoords.append(y)
-#             pre_xcoords += self.xy_coords_by_trial[
-#                 filenum][0][stim_onset-100:stim_onset]
-#             pre_ycoords += self.xy_coords_by_trial[
-#                 filenum][1][stim_onset-100:stim_onset]
-#             vel_vector = [np.sqrt(
-#                 np.dot(
-#                     [v2[0]-v1[0], v2[1]-v1[1]],
-#                     [v2[0]-v1[0], v2[1]-v1[1]])) for v1, v2 in sliding_window(
-#                         2, zip(pre_xcoords, pre_ycoords))]
-#             vv_filtered = gaussian_filter(vel_vector, 4)
-#             bout_inds = argrelextrema(
-#                 np.array(vv_filtered), np.greater_equal,  order=5)[0]
-#             if len(bout_inds) != 0:
-#                 bi_thresh = [arg for arg in bout_inds if vv_filtered[arg] > 1]
-#                 if len(bi_thresh) != 0:
-#                     fi = [bi_thresh[0]]
-#                 else:
-#                     fi = []
-#                 bi_norepeats = fi + [b for a, b in sliding_window(
-#                     2, bi_thresh) if b-a > 20]
-# #                pl.plot(vv_filtered)
-#  #               pl.plot(bi_norepeats,
-#   #                      np.zeros(len(bi_norepeats)), marker='.')
-# #            pl.show()
-#             bout_init_position = [[np.nanmean(pre_xcoords[bi-60:bi-10]),
-#                                    np.nanmean(pre_ycoords[bi-60:bi-10])]
-#                                   for bi in bi_norepeats]
-#             bout_post_position = [[np.nanmean(pre_xcoords[bi+50:bi+100]),
-#                                    np.nanmean(pre_ycoords[bi+50:bi+100])]
-#                                   for bi in bi_norepeats]
-#             disp_vecs = [[b[0]-a[0], b[1]-a[1]] for a,
-#                          b in zip(bout_init_position, bout_post_position)]
-#             dots = [np.dot(i, j) / (magvector(i) * magvector(j))
-#                     for i, j in sliding_window(2, disp_vecs)]
-#             ang = [np.arccos(a) for a in dots]
-#             crosses = [np.cross(i, j) for i, j in sliding_window(2, disp_vecs)]
-#             self.pre_escape_bouts.append([ang, crosses])
-
-
+            
     def get_stim_times(self, plot_stim):
 # There is a 100 pixel wide window surrounding the LED. At first, the LED is in the leftmost 50 pixels. After stim, in rightmost. Have
 #        2000 frames of 100 pixel windows, Stim happens after 100 frames. Get exact timing using when the LED reaches steady state.
@@ -223,7 +189,7 @@ class Escapes:
         barrier_diameter = self.barrier_diam
         xcoords = self.xy_coords_by_trial[trialnum][0]
         ycoords = self.xy_coords_by_trial[trialnum][1]
-        axes = fig.add_subplot(111, axisbg='.75')
+        axes = fig.add_subplot(111)
         barrier_plot = pl.Circle((barrier_x, barrier_y),
                                  barrier_diameter / 2, fc='r')
         axes.add_artist(barrier_plot)
@@ -305,7 +271,11 @@ class Escapes:
                     for j in range(fish_com_x - winsize, fish_com_x + winsize):
                         mask[i, j] = 0
                 cv2.multiply(brsub, mask, brsub)
-                eyes_x, eyes_y = find_darkest_pixel(brsub)
+#                eyes_x, eyes_y = find_darkest_pixel(brsub)
+                eyes_x, eyes_y = copy.deepcopy([fish_com_x, fish_com_y])
+                fishcont_avg = np.mean(fishcont, axis=0)[0].astype(np.int)
+                fish_com_x = fishcont_avg[0]
+                fish_com_y = fishcont_avg[1]
                 cv2.circle(im_color, (eyes_x, eyes_y), 1, (255, 0, 0), 1)
     # com actually comes out red, mid blue
                 cv2.circle(im_color,
@@ -417,6 +387,17 @@ class Escapes:
                 
     def infer_collisions(self, barrier_escape_object, plotornot):
 
+
+# Here want to assess the probability of colliding per trial of the d or l trials
+# provided that n goes in a particular direction. can also put a collision truth
+# for the l and d trials into a member variable that is cleared before you add it.
+# this collision function seems fine to me but has to be restricted to the
+# immediate aftermath of the stimulus time (i.e. between stim time and stim time + 30)
+
+# also want to write a wrapper around the h_to_b calc and the escapesvsbarrierloc plotter
+
+        
+        
         def collision(xb, yb, bd, x, y):
             vec = np.sqrt((x - xb)**2 + (y - yb)**2)
             if math.isnan(x):
@@ -453,9 +434,7 @@ class Escapes:
 
         collision_trials = []
         for trial_counter, xy_coords in enumerate(self.xy_coords_by_trial):
-            self.get_orientation(trial_counter, False)
-            self.find_initial_conditions(trial_counter)
-            ha_init = self.initial_conditions[0]
+            ha_init = self.initial_conditions[trial][0]
             if not math.isnan(ha_init):
                 zipped_coords = zip(xy_coords[0], xy_coords[1])
                 escape_coords = rotate_coords(zipped_coords, -ha_init)
@@ -491,46 +470,16 @@ class Escapes:
         barrier_escape_object.collision_prob.append(
             float(len(collision_trials)) / len(self.xy_coords_by_trial))
 
-
-
-# this function finds the orientation to the barrier at the beginning of every barrier trial. will be called once for every trial. THEN call the above function "infer collision"
-
-    def control_escapes(self):
-        turn_fig = pl.figure()
-        turn_ax = turn_fig.add_subplot(111)
-        turn_ax.set_xlim([-100, 100])
-        turn_ax.set_ylim([-100, 100])
-        timerange = self.timerange
-        for trial, xy_coords in enumerate(self.xy_coords_by_trial):
-            ha_init = self.initial_conditions[trial][0]
-            if not math.isnan(ha_init):
-                zipped_coords = zip(xy_coords[0], xy_coords[1])
-                escape_coords = rotate_coords(zipped_coords, -ha_init)
-                x_escape = np.array(
-                    [x for [x, y] in escape_coords[timerange[0]:timerange[1]]])
-#                print(x_escape[0:10])
-                x_escape = x_escape - x_escape[0]
-                y_escape = np.array(
-                    [y for [x, y] in escape_coords[timerange[0]:timerange[1]]])
-                y_escape = y_escape - y_escape[0]
-                turn_ax.plot(
-                    x_escape,
-                    y_escape, 'g')
-                turn_ax.text(
-                    x_escape[-1],
-                    y_escape[-1],
-                    str(trial),
-                    size=10,
-                    backgroundcolor='w')
-        pl.show()
         
-    def escapes_vs_barrierloc(self):
-        turn_fig = pl.figure()
-        turn_ax = turn_fig.add_subplot(111)
-        turn_ax.set_xlim([-100, 100])
-        turn_ax.set_ylim([-100, 100])
+    def escapes_vs_barrierloc(self, *dontplot):
+        if dontplot == ():
+            turn_fig = pl.figure()
+            turn_ax = turn_fig.add_subplot(111)
+            turn_ax.set_xlim([-100, 100])
+            turn_ax.set_ylim([-100, 100])
         timerange = self.timerange
-        l_or_r = []
+        barrier_on_left = []
+        barrier_on_right = []
         for trial in range(len(self.xy_coords_by_trial)):
             to_barrier_init = self.initial_conditions[trial][0]
             ha_init = self.initial_conditions[trial][2]
@@ -545,43 +494,49 @@ class Escapes:
                     [y for [x, y] in escape_coords[timerange[0]:timerange[1]]])
                 y_escape = y_escape - y_escape[0]
                 if to_barrier_init < 0:
-                    l_or_r.append('l')
-                    turn_ax.plot(
-                        x_escape,
-                        y_escape, 'b')
-                    turn_ax.text(
-                        x_escape[-1],
-                        y_escape[-1],
-                        str(trial),
-                        size=10,
-                        backgroundcolor='w')
+                    barrier_on_left.append([x_escape, y_escape])
+                    if dontplot == ():
+                        turn_ax.plot(
+                            x_escape,
+                            y_escape, 'b')
+                        turn_ax.text(
+                            x_escape[-1],
+                            y_escape[-1],
+                            str(trial),
+                            size=10,
+                            backgroundcolor='w')
                 elif to_barrier_init > 0:
-                    l_or_r.append('r')
-                    turn_ax.plot(
-                        x_escape,
-                        y_escape, 'm')
-                    turn_ax.text(
-                        x_escape[-1],
-                        y_escape[-1],
-                        str(trial),
-                        size=10,
-                        backgroundcolor='w')
-        print l_or_r
-        pl.show()
+                    barrier_on_right.append([x_escape, y_escape])
+                    if dontplot == ():
+                        turn_ax.plot(
+                            x_escape,
+                            y_escape, 'm')
+                        turn_ax.text(
+                            x_escape[-1],
+                            y_escape[-1],
+                            str(trial),
+                            size=10,
+                            backgroundcolor='w')
+        if dontplot == ():
+            pl.show()
+        else:
+            return barrier_on_left, barrier_on_right
 
 # MUST BE CALLED AFTER FINDING CSTART ANGLES        
     def find_cstart(self, plotornot):
         for trial in range(len(self.xy_coords_by_trial)):
+            tail_kern = Gaussian1DKernel(1)
             stim_init = self.stim_init_times[trial]
             c_thresh = 30
-            ta = gaussian_filter(self.tailangle_sums[trial], 1)
-            avg_curl_init = np.nanmean(ta[0:self.pre_c])
-            ta = ta - avg_curl_init
+            ta = convolve(self.tailangle_sums[trial], tail_kern)
+            # avg_curl_init = np.nanmean(ta[0:self.pre_c])
+            # ta = ta - avg_curl_init
             c_start_angle = float('nan')
             ta_min = argrelmin(ta)[0].tolist()
             ta_max = argrelmax(ta)[0].tolist()
             ta_maxandmin = [x for x in sorted(ta_min + ta_max) if (
-                x > stim_init and abs(ta[x]) > c_thresh)]
+                (x > stim_init) and abs(
+                    ta[x]) > c_thresh)]
             if not ta_maxandmin:
                 return []
             if plotornot:
@@ -608,7 +563,7 @@ class Escapes:
             else:
                 self.cstart_rel_to_barrier.append(np.nan)
 
-    def contourfinder(self, im, *threshval):
+    def contourfinder(self, im, threshval):
         
         def cont_distance(cont_list, xy_center):
             for cont in cont_list:
@@ -622,19 +577,7 @@ class Escapes:
         # good params at 120 low area and dilate at 3x3
         # try dilate 5x5. works ok with 250.
         xy_cent = [40, 40]
-        if threshval != ():
-            threshval = threshval[0]
-            r, th = cv2.threshold(im, threshval, 255, cv2.THRESH_BINARY)
-#            th = cv2.erode(th, np.ones([3, 3]))
-#            th = cv2.dilate(th, np.ones([3, 3]))
-#            th = cv2.medianBlur(th, 3)
-
-
-        else:
-            th = im
-        # cv2.namedWindow('thresh', cv2.WINDOW_AUTOSIZE)
-        # cv2.imshow('thresh', th)
-        # cv2.waitKey(20)
+        r, th = cv2.threshold(im, threshval, 255, cv2.THRESH_BINARY)
         rim, contours, hierarchy = cv2.findContours(
             th, cv2.RETR_LIST, cv2.CHAIN_APPROX_NONE)
         contours = sorted(contours, key=cv2.contourArea, reverse=True)
@@ -643,33 +586,14 @@ class Escapes:
         contcomp = [cnt for cnt in
                     contours if areamin < cv2.contourArea(
                         cnt) < areamax]
-
-        
-        # if threshval == 20:
-        #     print contours
-        #     th_color = cv2.cvtColor(th, cv2.COLOR_GRAY2RGB)
-        #     cv2.drawContours(th_color, [contours[0]], -1, (0, 255, 0), 1)
-        #     cv2.imshow('', th_color)
-        #     cv2.waitKey(0)
-        #     print(cv2.contourArea(contours[0]))
-#        cvx_hull_by_area = [cv2.convexHull(cnt) for cnt in contours]        
-        # contcomp = [cnt for cnt in
-        #             cvx_hull_by_area if areamin < cv2.contourArea(
-        #                 cnt) < areamax]
         if contcomp:
             fishcont, x, y = cont_distance(contcomp, xy_cent)
             if math.isnan(x):
-                if threshval == ():
-                    return fishcont, x, y, th
-                else:
-                    return self.contourfinder(im, threshval-1)
+                return self.contourfinder(im, threshval-1)
             else:
-                np.save('fishcont.npy', fishcont)
                 return fishcont, x, y, th
     # this is a catch for missing the fish
         if threshval < 15:
-            # if areamin * .75 < cv2.contourArea(cvx_hull_by_area[0]) < areamax:
-            #     fishcont, x, y = cont_distance(cvx_hull_by_area[0], xy_cent)
             if areamin * .75 < cv2.contourArea(contours[0]) < areamax:
                 fishcont, x, y = cont_distance(contours[0], xy_cent)
                 if math.isnan(x):
@@ -682,15 +606,7 @@ class Escapes:
                 return np.array([]), float('NaN'), float('NaN'), np.zeros(
                     [im.shape[0], im.shape[1]]).astype(np.uint8)
         else:
-            if threshval != ():
-                return self.contourfinder(im, threshval-1)
-            else:
-                print('returning nothing')
-                if contours:
-                    print(cv2.contourArea(contours[0]))
-                return np.array([]), float('NaN'), float('NaN'), np.zeros(
-                    [im.shape[0], im.shape[1]]).astype(np.uint8)
-
+            return self.contourfinder(im, threshval-1)
 
     def body_curl(self):
 
@@ -799,7 +715,9 @@ class Escapes:
 # center of mass would dictate a collision (i.e. center of mass is ~ 2 pixels from the edge of the fish). 
 
 
-# FIRST MAKE A CALL TO INIT HEADING AND BARRIER. THEN FIGURE OUT ORIENTATION TO BARRIER BASED ON THIS (ALREADY A FUNCTION FOR THIS DOWN BELOW). 
+# FIRST MAKE A CALL TO INIT HEADING AND BARRIER. THEN FIGURE OUT ORIENTATION TO BARRIER BASED ON THIS (ALREADY A FUNCTION FOR THIS DOWN BELOW).
+
+
 
 def csv_data(headers, datavals):
     with open('output.csv', 'wb') as csvfile:
@@ -982,75 +900,113 @@ def rotate_contour(image, angle, contour):
         rotated_contour.append([[new_point[0][0], new_point[1][0]]])
     return np.array(rotated_contour).astype(np.int32)
 
-
-def plot_h_vs_b(obj):
-    for x in obj.h_vs_b_by_trial.items():
-        pl.plot(np.abs(x[1]))
-    pl.show()
-
     
 def magvector(vec):
     mag = np.sqrt(np.dot(vec, vec))
     return mag
 
 
-# PUT A TIMEOUT IN THE ESCAPE RIG WHEN THE FISH GOES INTO THE BARRIER. WAIT 3 SECONDS OR SOMETHING. THEN YOU WONT GET TRIALS WHERE THEY SWIM
-# THROUGH THE BARRIER.
+def experiment_collector(drct_list):
+    hb_l = []
+    hb_d = []
+    hb_n = []
+    barr_right_l = []
+    barr_left_l = []
+    barr_right_d = []
+    barr_left_d = []
+    barr_right_n = []
+    barr_left_n = []
+    for drct in drct_list:
+        try:
+            esc_l = pickle.load(open(
+                drct + '/escapes_l.pkl', 'rb'))
+            hb_l += esc_l.h_vs_b_plot(0)
+            br_l, bl_l = esc_l.escapes_vs_barrierloc(1)
+            barr_right_l += br_l
+            barr_left_l += bl_l
+        except IOError:
+            pass
+        try:
+            esc_d = pickle.load(open(
+                drct + '/escapes_d.pkl', 'rb'))
+            hb_d += esc_d.h_vs_b_plot(0)
+            br_d, bl_d = esc_d.escapes_vs_barrierloc(1)
+            barr_right_d += br_d
+            barr_left_d += bl_d
+        except IOError:
+            pass
+        try:
+            esc_n = pickle.load(open(
+                drct + '/escapes_n.pkl', 'rb'))
+            hb_n += esc_n.h_vs_b_plot(0)
+            br_n, bl_n = esc_n.escapes_vs_barrierloc(1)
+            barr_right_n += br_d
+            barr_left_n += bl_d
 
-''' 2/22/18: This is the program that you'll use for analyzing all minefield data. Your first pass will be to get 40 fish (wik day 10-12) that experience barriers projected onto the floor of the tank. Start with red, then invert to gray, then do a set of no barrier trials. Do want to answer a couple more questions. Can I address Rob's question of whether they are turning right or left prior to right or left escapes? Also, am I sure the experiment is running at 500Hz?Try to use a timing function because I'm not convinced that the j_out is relevant. It showed no dropped frames when I was drawing the barriers every frame, and it was clearly slowed down by at least a factor of 5.'''
+        except IOError:
+            pass
+        
+    fig, axes = pl.subplots(3, 1, sharex=True)
+    fig2, axes2 = pl.subplots(1, 3, sharex=True, sharey=True)
+    axes2[0].set_xlim([-100, 100])
+    axes2[0].set_ylim([-100, 100])
+    axes2[0].set_aspect('equal')
+    axes2[1].set_aspect('equal')
+    axes2[2].set_aspect('equal')
 
+    print hb_l
+    try:
+        sb.tsplot(np.array(hb_l), ax=axes[0])
+        for r_coords, l_coords in izip_longest(barr_left_l, barr_right_l):
+            if r_coords is not None:
+                axes2[0].plot(r_coords[0], r_coords[1], 'm')
+            if l_coords is not None:
+                axes2[0].plot(l_coords[0], l_coords[1], 'b')
+    except RuntimeError:
+        pass
+    try:
+        sb.tsplot(np.array(hb_d), ax=axes[1])
+        for r_coords, l_coords in izip_longest(barr_left_d, barr_right_d):
+            if r_coords is not None:
+                axes2[1].plot(r_coords[0], r_coords[1], 'm')
+            if l_coords is not None:
+                axes2[1].plot(l_coords[0], l_coords[1], 'b')
 
-# all you have to do to study inverted vs normal vs control is change the letters input to an Escape object. it really is nice code! i don't like
-# how the infer functions at the end overwrite member variables. maybe change this at some point. 
+    except RuntimeError:
+        pass
+    try:
+        sb.tsplot(np.array(hb_n), ax=axes[2])
+        for r_coords, l_coords in izip_longest(barr_left_n, barr_right_n):
+            if r_coords is not None:
+                axes2[2].plot(r_coords[0], r_coords[1], 'm')
+            if l_coords is not None:
+                axes2[2].plot(l_coords[0], l_coords[1], 'b')
 
-
-
-#instead of using l, n, d notation, use cond1, cond2, nb. 
-
+    except RuntimeError:
+        pass
+    pl.show()
+        
 if __name__ == '__main__':
 
-# 130 works best for 102818_3
     np.seterr(all='raise')
     fish_id = '/022519_1'
     pl.ioff()
     os.chdir('/Users/nightcrawler2/Escape-Analysis/')
     area_thresh = 47
     esc_dir = os.getcwd() + fish_id
-    # escape_cond1 = Escapes('v', esc_dir, area_thresh)
-    # escape_cond2 = Escapes('i', esc_dir, area_thresh)
     escape_cond1 = Escapes('l', esc_dir, area_thresh)
     escape_cond2 = Escapes('d', esc_dir, area_thresh)
-#    escape_nb = Escapes('n', esc_dir, area_thresh)
+#    escape_nb = Escapes('n', esc_dir, area_thresh
     plotcstarts = False
     escape_cond1.trial_analyzer(plotcstarts)
 #    escape_nb.infer_collisions(escape_cond1, False)
-
     escape_cond2.trial_analyzer(plotcstarts)
  #   escape_nb.infer_collisions(escape_cond2, False)
-    
  #   escape_nb.trial_analyzer(plotcstarts)
-
-# # MAKE SURE THESE ALWAYS COME LAST. IF NOT, HA_IN_TIMEFRAME REMAINS THE LAST TRIAL.
-
     escape_cond1.escapes_vs_barrierloc()
     escape_cond2.escapes_vs_barrierloc()
   #  escape_nb.control_escapes()
 #    data_output(escape_cond1, escape_nb, escape_cond2, esc_dir)
 
-
-
-
-
-# # These functions are specific for a given trial. Orientation for a trial is obtained by finding the eye midpoint and the sb
-# # True / False arg to get_orientation specifies if you want to make videos with eye and sb labeled for accuracy readout.
-
-# # Get_orientation finds the orientation of the fish per trial on a unit circle basis.
-# # Vec_to_barrier finds the angle on a unit circle of the fish between its center of mass and the barrier, pointing from the fish
-# # to the barrier.
-# # Heading_vs_barrier asks how the heading angle changes through the escape with relation to the barrier. 
-
-
-
-
-
-
+    escape_cond1.exporter()
+    escape_cond2.exporter()
