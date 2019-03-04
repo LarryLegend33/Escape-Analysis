@@ -22,8 +22,16 @@ from matplotlib.image import AxesImage
 from matplotlib.colors import Colormap
 from itertools import izip_longest
 
-# THIS CAN BE USED BUT IT WILL TAKE A LIST OF ESCAPE OBJECTS AND ITERATE THROUGH IT.
-# Also much of its current data is useless. 
+
+
+# This is the main class for this program.
+# Escape objects take in barrier locations, XY coords of the fish,
+# movies during taps, raw stim files (i.e. the position of the
+# tapper light over time), and relevant bacgkrounds for each
+# tap trial. The Escape class contains methods for finding the fish's
+# orientation relative to a barrier, finding the timing and angle
+# of the c-start by calculating the exact moment of the tap,
+# and plotting the escape trajectory relative to a barrier position
 
 
 class Escapes:
@@ -103,6 +111,12 @@ class Escapes:
         self.initial_conditions = []
         self.load_experiment()
 
+    # this function simply plots the heading angle vs. the barrier angle
+    # over time. the barrier angle runs from the fish's center of mass
+    # to the center of the barrier it is escaping from.
+    # 0 h_vs_b would indicate the fish pointing at the barrier while
+    # pi is perfectly away. 
+        
     def h_vs_b_plot(self, plot_fish):
         # h_vs_b_mod = [np.mod(
         #     hb_trial, 2*np.pi) for hb_trial in self.h_vs_b_by_trial]
@@ -112,7 +126,7 @@ class Escapes:
             pl.show()
         else:
             return h_vs_b_mod
-        
+
     def load_experiment(self):
         self.get_xy_coords()
         self.load_barrier_info()
@@ -136,6 +150,11 @@ class Escapes:
         self.barrier_coordinates = xylist
         self.barrier_diam = np.round(np.mean(diam_list))
 
+# this function takes in the xy coordinates for each tap
+# trial, throwing out outliers and replacing them with
+# coords from the frame previous. outliers are kept track of
+# and used to ignore video frames from missed indices.
+        
     def get_xy_coords(self):
         print self.condition
         for filenum, xy_file in enumerate(self.xy_escapes):
@@ -151,11 +170,15 @@ class Escapes:
             self.xy_coords_by_trial.append([xc_trial,
                                             yc_trial])
             self.missed_inds_by_trial.append(missed_inds)
+
+# There is a 100 pixel wide window surrounding the LED.
+# At first, the LED is in the leftmost 50 pixels. After stim, in rightmost.
+# Have 2000 frames of 100 pixel windows. Get exact timing
+# using when the LED reaches steady state.
+# The stimulus itself is 200ms long, and lasts for ~100 frames.
+# The steady state should be taken around 50 frames into the stimulus.
             
     def get_stim_times(self, plot_stim):
-# There is a 100 pixel wide window surrounding the LED. At first, the LED is in the leftmost 50 pixels. After stim, in rightmost. Have
-#        2000 frames of 100 pixel windows, Stim happens after 100 frames. Get exact timing using when the LED reaches steady state.
-        # The stimulus itself is 200ms long, and lasts for ~100 frames. The steady state should be taken around 50 frames into the stimulus. 
         stim_times = []
         for stim_file in self.stim_data:
             stimdata = np.genfromtxt(stim_file)
@@ -177,6 +200,9 @@ class Escapes:
                 pl.show()
         self.stim_init_times = [x-self.timerange[0] for x in stim_times]
 
+# finds which barrier in the barrier file the fish is escaping from
+# using vector distance. 
+        
     def get_correct_barrier(self):
         for coords in self.xy_coords_by_trial:
             mag_distance = []
@@ -189,7 +215,7 @@ class Escapes:
             correct_barrier_index = np.argmin(mag_distance)
             self.barrier_xy_by_trial.append(self.barrier_coordinates[
                     correct_barrier_index])
-
+            
     def plot_xy_trial(self, trialnum):
         fig = pl.figure()
         barrier_x = self.barrier_xy_by_trial[trialnum][0]
@@ -218,6 +244,13 @@ class Escapes:
         pl.colorbar(colo)
         pl.title('Trial' + str(trialnum))
         pl.show()
+
+# for each tap trial, a raw video of the escape is recorded and a background
+# saved to use for contour finding. this function calls the contourfinding
+# function and finds the orientation of the found contour by comparing its
+# center of mass to its contours average position. this yields an
+# extremely accurate vector for orientation which is filtered and
+# converted to an angle.
 
     def get_orientation(self, makevid):
         for trial, (vid_file, xy) in enumerate(
@@ -313,6 +346,10 @@ class Escapes:
                                 for ang in heading_angles]
             self.ha_in_timeframe.append(norm_orientation)
             self.contours_by_trial.append(contour_list)
+
+
+# this function calculates a vector from the fish's position to the
+# barrier it is escaping
             
     def vec_to_barrier(self):
         for trial, xy in enumerate(self.xy_coords_by_trial):
@@ -330,6 +367,9 @@ class Escapes:
             transformed_angles = [2*np.pi + ang if ang < 0 else ang
                                   for ang in angles]
             self.ba_in_timeframe.append(transformed_angles)
+
+# this function compares the heading angle of the fish to the
+# vector to the barrier over time.
 
     def heading_v_barrier(self):
         for h_angles, b_angles in zip(self.ha_in_timeframe,
@@ -362,7 +402,15 @@ class Escapes:
                      for df, dirc in zip(diffs, right_or_left)]
             self.h_vs_b_by_trial.append(diffs)
 
-# Think of barrier axis as the X axis of the unit circle. ha to the right of the barrier are negative (barrier is left of the fish), while ha to the left of the barrier are positive (barrier is on the right of the fish). 
+# Think of barrier axis as the X axis of the unit circle.
+# ha to the right of the barrier are negative
+# (barrier is left of the fish), while ha to the left of
+# the barrier are positive (barrier is on the right of the fish).
+
+
+# this function finds the state of the fish in the moment
+# before the tap stimulus arrives. these conditions are used
+# for finding heading to the barrier and the cstart
 
     def find_initial_conditions(self):
         for trial in range(len(self.xy_coords_by_trial)):
@@ -380,11 +428,6 @@ class Escapes:
             mag = math.sqrt(np.sum([i*i for i in vec]))
             self.initial_conditions.append([h_to_b, mag, ha_avg, ba_avg])
 
-# initial conditions will be input into next two functions
-
-
-# outside main line will find the ha and ba for a given trial in the  barrier escape object. for each barrier trial, run through EVERY control trial. 
-
     def trial_analyzer(self, plotc):
         self.get_orientation(True)
         self.vec_to_barrier()
@@ -392,20 +435,16 @@ class Escapes:
         self.find_initial_conditions()
         self.body_curl()
         self.find_cstart(plotc)
-                
-    def infer_collisions(self, barrier_escape_object, plotornot):
-
 
 # Here want to assess the probability of colliding per trial of the d or l trials
 # provided that n goes in a particular direction. can also put a collision truth
 # for the l and d trials into a member variable that is cleared before you add it.
 # this collision function seems fine to me but has to be restricted to the
 # immediate aftermath of the stimulus time (i.e. between stim time and stim time + 30)
+# i'm not sure that this is generally useful
 
-# also want to write a wrapper around the h_to_b calc and the escapesvsbarrierloc plotter
+    def infer_collisions(self, barrier_escape_object, plotornot):
 
-        
-        
         def collision(xb, yb, bd, x, y):
             vec = np.sqrt((x - xb)**2 + (y - yb)**2)
             if math.isnan(x):
@@ -478,6 +517,11 @@ class Escapes:
         barrier_escape_object.collision_prob.append(
             float(len(collision_trials)) / len(self.xy_coords_by_trial))
 
+
+# this function splits up escapes by whether the barrier was to the
+# right or left of the fish at the onset of the tap.
+# you can chose to plot these trajectories for a single fish or
+# wrap this function and plot many fish.
         
     def escapes_vs_barrierloc(self, *dontplot):
         if dontplot == ():
@@ -530,7 +574,12 @@ class Escapes:
         else:
             return barrier_on_left, barrier_on_right
 
-# MUST BE CALLED AFTER FINDING CSTART ANGLES        
+# this function uses the thresholded image where contours were discovered
+# and uses the contour found in get_orientation. the contour is rotated
+# according to the fish's heading angle.
+# points along the contour are used to find the cumulative angle of the
+# tail and the index where the c-start begins.
+        
     def find_cstart(self, plotornot):
         for trial in range(len(self.xy_coords_by_trial)):
             tail_kern = Gaussian1DKernel(1)
@@ -570,6 +619,11 @@ class Escapes:
                     self.cstart_rel_to_barrier.append(0)
             else:
                 self.cstart_rel_to_barrier.append(np.nan)
+
+# contourfinder dynamically thresholds a background subtracted image
+# until a criteria of contour size and proximity to the fish is reached for a
+# contour. the function is recursive in that it continues to lower the
+# threshold until the correct contour is found.
 
     def contourfinder(self, im, threshval):
         
@@ -615,6 +669,9 @@ class Escapes:
                     [im.shape[0], im.shape[1]]).astype(np.uint8)
         else:
             return self.contourfinder(im, threshval-1)
+
+    # body curl finds the c-start angle using the previously described
+    # fish contour 
 
     def body_curl(self):
 
@@ -715,35 +772,12 @@ class Escapes:
             self.all_tailangles.append(all_angles)
 
 
-
-# this function will realign all the escapes during barrier_free conditions vertically (i.e. fish pointing at pi/2). 
-# for barrier conditions, will realign all escapes vertically, and put blue when barrier is to the right, pink when barrier to the left. 
-# have to write an external function that takes a barrier Escape object and a no barrier Escape object and maps  the barrier locations onto 
-# the no barrier trajectories. the function will identify how many trajectories cross or come within 2 pixels of hitting the barrier, meaning the 
-# center of mass would dictate a collision (i.e. center of mass is ~ 2 pixels from the edge of the fish). 
-
-
-# FIRST MAKE A CALL TO INIT HEADING AND BARRIER. THEN FIGURE OUT ORIENTATION TO BARRIER BASED ON THIS (ALREADY A FUNCTION FOR THIS DOWN BELOW).
-
-
-
-def csv_data(headers, datavals):
-    with open('output.csv', 'wb') as csvfile:
-        output_data = csv.writer(csvfile)
-        output_data.writerow(headers)
-        for dt in datavals:
-            output_data.writerow(dt)
-
-
 def find_darkest_pixel(im):
     boxfiltered_im = cv2.boxFilter(im, 0, (3, 3))
     boxfiltered_im = cv2.boxFilter(boxfiltered_im, 0, (3, 3))
     max_y, max_x = np.unravel_index(boxfiltered_im.argmax(),
                                     boxfiltered_im.shape)
     return max_x, max_y
-
-
-
 
 
 def make_segments(x, y):
@@ -962,8 +996,8 @@ def experiment_collector(drct_list):
                     len(esc_l.cstart_rel_to_barrier)))
             cstart_timing_l += esc_l.escape_latencies
             cstart_angle_l += esc_l.cstart_angles
-            entries_into_center_l += len(esc_l.numgrayframes)
-            time_per_entry_l += esc_l.numgrayframes
+#            entries_into_center_l += len(esc_l.numgrayframes)
+ #           time_per_entry_l += esc_l.numgrayframes
             
         except IOError:
             pass
@@ -979,8 +1013,8 @@ def experiment_collector(drct_list):
                     len(esc_d.cstart_rel_to_barrier)))
             cstart_timing_d += esc_d.escape_latencies
             cstart_angle_d += esc_d.cstart_angles
-            entries_into_center_d += len(esc_d.numgrayframes)
-            time_per_entry_d += esc_d.numgrayframes
+  #          entries_into_center_d += len(esc_d.numgrayframes)
+   #         time_per_entry_d += esc_d.numgrayframes
 
         except IOError:
             pass
@@ -996,8 +1030,8 @@ def experiment_collector(drct_list):
                     len(esc_n.cstart_rel_to_barrier)))
             cstart_timing_n += esc_n.escape_latencies
             cstart_angle_n += esc_n.cstart_angles
-            entries_into_center_n += len(esc_n.numgrayframes)
-            time_per_entry_n += esc_n.numgrayframes
+    #        entries_into_center_n += len(esc_n.numgrayframes)
+     #       time_per_entry_n += esc_n.numgrayframes
 
         except IOError:
             pass
@@ -1006,12 +1040,17 @@ def experiment_collector(drct_list):
     fig, axes = pl.subplots(1, 1)
     axes.set_title('Fish Orientation vs. Barrier (rad)')
     fig2, axes2 = pl.subplots(1, 3, sharex=True, sharey=True)
-    fig2.suptitle('Escape vs. Barrier Location')
     axes2[0].set_xlim([-100, 100])
     axes2[0].set_ylim([-100, 100])
+    axes2[0].vlines(0, -100, 100, colors=(.8, .8, .8), linestyles='dashed')
+    axes2[1].vlines(0, -100, 100, colors=(.8, .8, .8), linestyles='dashed')
+    axes2[2].vlines(0, -100, 100, colors=(.8, .8, .8), linestyles='dashed')
     axes2[0].set_aspect('equal')
     axes2[1].set_aspect('equal')
     axes2[2].set_aspect('equal')
+    axes2[0].set_title('Barrier: Lights On')
+    axes2[1].set_title('Barrier: Lights Off')
+    axes2[2].set_title('No Barrier')
     
     try:
         sb.tsplot(np.array(hb_l), ax=axes)
@@ -1049,12 +1088,14 @@ def experiment_collector(drct_list):
     except RuntimeError:
         pass
 
-    barfig, barax = pl.subplots(1, 5)
+    pl.tight_layout()
+    
+    barfig, barax = pl.subplots(1, 3)
     barax[0].set_title('% CStart Away from Barrier')
     barax[1].set_title('CStart Latency (ms)')
     barax[2].set_title('CStart Angle (deg)')
-    barax[3].set_title('# Entires to Barrier Zone')
-    barax[4].set_title('Time Spent in Barrier Zone')
+#    barax[3].set_title('# Entires to Barrier Zone')
+#    barax[4].set_title('Time Spent in Barrier Zone')
     sb.barplot(data=[cdir for cdir in [cstart_percentage_l,
                                        cstart_percentage_d,
                                        cstart_percentage_n]
@@ -1068,14 +1109,14 @@ def experiment_collector(drct_list):
                                           cstart_angle_d,
                                           cstart_angle_n] if cang != []],
                   ax=barax[2])
-    sb.violinplot(data=[num_entries for num_entries in [entries_into_center_l,
-                                                        entries_into_center_d,
-                                                        entries_into_center_n]
-                        if num_entries != []], ax=barax[3])
-    sb.violinplot(data=[dur for dur in [time_per_entry_l,
-                                        time_per_entry_d,
-                                        time_per_entry_n] if dur != []],
-                  ax=barax[4])
+    # sb.violinplot(data=[num_entries for num_entries in [entries_into_center_l,
+    #                                                     entries_into_center_d,
+    #                                                     entries_into_center_n]
+    #                     if num_entries != []], ax=barax[3])
+    # sb.violinplot(data=[dur for dur in [time_per_entry_l,
+    #                                     time_per_entry_d,
+    #                                     time_per_entry_n] if dur != []],
+    #               ax=barax[4])
 
     pl.tight_layout()
     pl.show()
@@ -1085,20 +1126,20 @@ if __name__ == '__main__':
 
     experiment_collector(['022519_1'])
 
-    np.seterr(all='raise')
-    fish_id = '/022519_1'
-    pl.ioff()
-    os.chdir('/Users/nightcrawler2/Escape-Analysis/')
-    area_thresh = 47
-    esc_dir = os.getcwd() + fish_id
-    escape_cond1 = Escapes('l', esc_dir, area_thresh)
-    escape_cond2 = Escapes('d', esc_dir, area_thresh)
-# #    escape_nb = Escapes('n', esc_dir, area_thresh
-    plotcstarts = True
-    escape_cond1.trial_analyzer(plotcstarts)
-# #    escape_nb.infer_collisions(escape_cond1, False)
-    escape_cond2.trial_analyzer(plotcstarts)
- #   escape_nb.infer_collisions(escape_cond2, False)
+#     np.seterr(all='raise')
+#     fish_id = '/022519_1'
+#     pl.ioff()
+#     os.chdir('/Users/nightcrawler2/Escape-Analysis/')
+#     area_thresh = 47
+#     esc_dir = os.getcwd() + fish_id
+#     escape_cond1 = Escapes('l', esc_dir, area_thresh)
+#     escape_cond2 = Escapes('d', esc_dir, area_thresh)
+# # #    escape_nb = Escapes('n', esc_dir, area_thresh
+#     plotcstarts = True
+#     escape_cond1.trial_analyzer(plotcstarts)
+# # #    escape_nb.infer_collisions(escape_cond1, False)
+#     escape_cond2.trial_analyzer(plotcstarts)
+#  #   escape_nb.infer_collisions(escape_cond2, False)
  #   escape_nb.trial_analyzer(plotcstarts)
 #    escape_cond1.escapes_vs_barrierloc()
 #    escape_cond2.escapes_vs_barrierloc()
