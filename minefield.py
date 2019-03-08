@@ -23,7 +23,6 @@ from matplotlib.colors import Colormap
 from itertools import izip_longest
 
 
-
 # This is the main class for this program.
 # Escape objects take in barrier locations, XY coords of the fish,
 # movies during taps, raw stim files (i.e. the position of the
@@ -948,12 +947,36 @@ def magvector(vec):
     return mag
 
 
-def experiment_collector(drct_list):
+def experiment_collector(drct_list, *new_exps):
 
-# last thing we want here is the cstart directions.
-# 1 is away, 0 is towards. want a barplot w/ errorbar for each fish.
-# can probably do by percentage? do all in one barplot with percent away vs towards.
-
+    os.chdir('/Users/nightcrawler2/Escape-Analysis/')
+    for newexp_dirct in new_exps:
+        fish_id = '/' + newexp_dirct
+        pl.ioff()
+        area_thresh = 47
+        esc_dir = os.getcwd() + fish_id
+        plotcstarts = False
+        try:
+            escape_cond1 = Escapes('l', esc_dir, area_thresh)
+            escape_cond1.trial_analyzer(plotcstarts)
+            escape_cond1.escapes_vs_barrierloc()
+            escape_cond1.exporter()
+        except IOError:
+            print("No L Trials")
+        try:
+            escape_cond2 = Escapes('d', esc_dir, area_thresh)
+            escape_cond2.trial_analyzer(plotcstarts)
+            escape_cond2.escapes_vs_barrierloc()
+            escape_cond2.exporter()
+        except IOError:
+            print("No D Trials")
+        try:
+            escape_nb = Escapes('n', esc_dir, area_thresh)
+            escape_nb.trial_analyzer(plotcstarts)
+            escape_nb.escapes_vs_barrierloc()
+            escape_nb.exporter()
+        except IOError:
+            print("No N Trials")
     hb_l = []
     hb_d = []
     hb_n = []
@@ -979,10 +1002,6 @@ def experiment_collector(drct_list):
     time_per_entry_d = []
     time_per_entry_n = []
     
-    
-    # cstart angle is also stored. can infer right or left from that.
-    # may be a good idea to show for n barrier trials
-    
     for drct in drct_list:
         try:
             esc_l = pickle.load(open(
@@ -996,11 +1015,11 @@ def experiment_collector(drct_list):
                     len(esc_l.cstart_rel_to_barrier)))
             cstart_timing_l += esc_l.escape_latencies
             cstart_angle_l += esc_l.cstart_angles
-#            entries_into_center_l += len(esc_l.numgrayframes)
- #           time_per_entry_l += esc_l.numgrayframes
-            
+            entries_into_center_l += len(esc_l.numgrayframes)
+            time_per_entry_l += esc_l.numgrayframes
         except IOError:
             pass
+        
         try:
             esc_d = pickle.load(open(
                 drct + '/escapes_d.pkl', 'rb'))
@@ -1013,11 +1032,11 @@ def experiment_collector(drct_list):
                     len(esc_d.cstart_rel_to_barrier)))
             cstart_timing_d += esc_d.escape_latencies
             cstart_angle_d += esc_d.cstart_angles
-  #          entries_into_center_d += len(esc_d.numgrayframes)
-   #         time_per_entry_d += esc_d.numgrayframes
-
+            entries_into_center_d += len(esc_d.numgrayframes)
+            time_per_entry_d += esc_d.numgrayframes
         except IOError:
             pass
+        
         try:
             esc_n = pickle.load(open(
                 drct + '/escapes_n.pkl', 'rb'))
@@ -1030,9 +1049,8 @@ def experiment_collector(drct_list):
                     len(esc_n.cstart_rel_to_barrier)))
             cstart_timing_n += esc_n.escape_latencies
             cstart_angle_n += esc_n.cstart_angles
-    #        entries_into_center_n += len(esc_n.numgrayframes)
-     #       time_per_entry_n += esc_n.numgrayframes
-
+            entries_into_center_n += len(esc_n.numgrayframes)
+            time_per_entry_n += esc_n.numgrayframes
         except IOError:
             pass
 
@@ -1089,13 +1107,12 @@ def experiment_collector(drct_list):
         pass
 
     pl.tight_layout()
-    
     barfig, barax = pl.subplots(1, 3)
     barax[0].set_title('% CStart Away from Barrier')
     barax[1].set_title('CStart Latency (ms)')
     barax[2].set_title('CStart Angle (deg)')
-#    barax[3].set_title('# Entires to Barrier Zone')
-#    barax[4].set_title('Time Spent in Barrier Zone')
+    barax[3].set_title('# Entires to Barrier Zone')
+    barax[4].set_title('Time Spent in Barrier Zone')
     sb.barplot(data=[cdir for cdir in [cstart_percentage_l,
                                        cstart_percentage_d,
                                        cstart_percentage_n]
@@ -1109,14 +1126,14 @@ def experiment_collector(drct_list):
                                           cstart_angle_d,
                                           cstart_angle_n] if cang != []],
                   ax=barax[2])
-    # sb.violinplot(data=[num_entries for num_entries in [entries_into_center_l,
-    #                                                     entries_into_center_d,
-    #                                                     entries_into_center_n]
-    #                     if num_entries != []], ax=barax[3])
-    # sb.violinplot(data=[dur for dur in [time_per_entry_l,
-    #                                     time_per_entry_d,
-    #                                     time_per_entry_n] if dur != []],
-    #               ax=barax[4])
+    sb.violinplot(data=[num_entries for num_entries in [entries_into_center_l,
+                                                        entries_into_center_d,
+                                                        entries_into_center_n]
+                        if num_entries != []], ax=barax[3])
+    sb.violinplot(data=[dur for dur in [time_per_entry_l,
+                                        time_per_entry_d,
+                                        time_per_entry_n] if dur != []],
+                  ax=barax[4])
 
     pl.tight_layout()
     pl.show()
@@ -1125,26 +1142,3 @@ def experiment_collector(drct_list):
 if __name__ == '__main__':
 
     experiment_collector(['022519_1'])
-
-#     np.seterr(all='raise')
-#     fish_id = '/022519_1'
-#     pl.ioff()
-#     os.chdir('/Users/nightcrawler2/Escape-Analysis/')
-#     area_thresh = 47
-#     esc_dir = os.getcwd() + fish_id
-#     escape_cond1 = Escapes('l', esc_dir, area_thresh)
-#     escape_cond2 = Escapes('d', esc_dir, area_thresh)
-# # #    escape_nb = Escapes('n', esc_dir, area_thresh
-#     plotcstarts = True
-#     escape_cond1.trial_analyzer(plotcstarts)
-# # #    escape_nb.infer_collisions(escape_cond1, False)
-#     escape_cond2.trial_analyzer(plotcstarts)
-#  #   escape_nb.infer_collisions(escape_cond2, False)
- #   escape_nb.trial_analyzer(plotcstarts)
-#    escape_cond1.escapes_vs_barrierloc()
-#    escape_cond2.escapes_vs_barrierloc()
-  #  escape_nb.control_escapes()
-#    data_output(escape_cond1, escape_nb, escape_cond2, esc_dir)
-
-#    escape_cond1.exporter()
-#    escape_cond2.exporter()
