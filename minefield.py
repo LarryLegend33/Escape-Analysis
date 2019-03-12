@@ -1,5 +1,4 @@
-﻿import csv
-import os
+﻿import os
 import numpy as np
 import math
 from matplotlib import pyplot as pl
@@ -32,6 +31,49 @@ from itertools import izip_longest
 # of the c-start by calculating the exact moment of the tap,
 # and plotting the escape trajectory relative to a barrier position
 
+class Condition_Collector:
+    def __init__(self, condition):
+        self.condition = condition
+        self.escape_data = {'Heading vs Barrier': [],
+                            'Collision Percentage': [],
+                            'CStart Latency': [],
+                            'CStart Angle': [],
+                            'Correct CStart Percentage': [],
+                            'Entries into Center': [],
+                            'Time Per Center Entry': [],
+                            'Barrier On Left Trajectories': [],
+                            'Barrier On Right Trajectories': []}
+
+    def update_ddict(self, escape_obj):
+        if escape_obj.condition != self.condition:
+            raise Exception('input condition mistmatch with class')
+        else:
+            self.escape_data['Heading vs Barrier'] += escape_obj.h_vs_b_plot(0)
+            br, bl = escape_obj.escapes_vs_barrierloc(1)
+            self.escape_data['Barrier On Left Trajectories'] += bl
+            self.escape_data['Barrier On Right Trajectories'] += br
+            self.escape_data['Correct CStart Percentage'].append(np.nansum(
+                escape_obj.cstart_rel_to_barrier) / float(
+                    len(escape_obj.cstart_rel_to_barrier)))
+            if escape_obj.stim_times_accurate:
+                self.escape_data[
+                    'CStart Latency'] += escape_obj.escape_latencies
+            self.escape_data['CStart Angle'] += escape_obj.cstart_angles
+            if len(escape_obj.numgrayframes) != 0:
+                self.escape_data['Entries into Center'].append(
+                    len(escape_obj.numgrayframes))
+                self.escape_data[
+                    'Time Per Center Entry'] += escape_obj.numgrayframes
+            self.escape_data['Collision Percentage'].append(
+                np.nansum(escape_obj.collisions) / float(
+                    len(escape_obj.collisions)))
+
+    def convert_to_nparrays(self):
+        np_array_dict = {}
+        for ky, it in self.escape_data.iteritems():
+            np_array_dict[ky] = np.array(it)
+        return np_array_dict
+
 
 class Escapes:
 
@@ -47,7 +89,9 @@ class Escapes:
     # this asks whether there is a bias in direction based on the HBO. 
         self.pre_escape_bouts = []
         self.stim_init_times = []
+        self.stim_times_accurate = True
         self.escape_latencies = []
+        self.collisions = []
         if exp_type in ['l', 'd']:
             bstruct_and_br_label = 'b'
         elif exp_type in ['v', 'i']:
@@ -57,14 +101,19 @@ class Escapes:
         self.barrier_file = np.loadtxt(
             directory + '/barrierstruct_' + bstruct_and_br_label + '.txt',
             dtype='string')
-        if exp_type in ['l', 'n']:
+        if exp_type == 'n':
             self.numgrayframes = np.loadtxt(
                 directory + '/numframesgray_' + exp_type + '.txt',
-                dtype='string')
+                dtype='string').astype(np.int)
+        elif exp_type == 'l':
+            self.numgrayframes = np.loadtxt(
+                directory + '/numframesgray_' + bstruct_and_br_label + '.txt',
+                dtype='string').astype(np.int)
         elif exp_type == 'd':
             self.numgrayframes = np.loadtxt(
                 directory + '/numframesgray_dark.txt',
-                dtype='string')
+                dtype='string').astype(np.int)
+        self.numgrayframes = self.numgrayframes.tolist()
         self.barrier_coordinates = []
         self.barrier_diam = 0
         self.barrier_xy_by_trial = []
@@ -101,7 +150,6 @@ class Escapes:
 
         self.cstart_angles = []
         self.cstart_rel_to_barrier = []
-        self.collision_prob = []
         self.all_tailangles = []
         self.tailangle_sums = []
         self.ha_in_timeframe = []
@@ -197,10 +245,17 @@ class Escapes:
                 pl.plot(first_half)
                 pl.plot(second_half)
                 pl.show()
-        self.stim_init_times = [x-self.timerange[0] for x in stim_times]
+        for x in stim_times:
+            if x > self.timerange[0] and x < self.timerange[1]:
+                self.stim_init_times.append(x-self.timerange[0])
+            else:
+                self.stim_init_times.append(self.pre_c)
+                self.stim_times_accurate = False
+        
 
 # finds which barrier in the barrier file the fish is escaping from
-# using vector distance. 
+# using vector distance.
+
         
     def get_correct_barrier(self):
         for coords in self.xy_coords_by_trial:
@@ -214,35 +269,66 @@ class Escapes:
             correct_barrier_index = np.argmin(mag_distance)
             self.barrier_xy_by_trial.append(self.barrier_coordinates[
                     correct_barrier_index])
-            
-    def plot_xy_trial(self, trialnum):
-        fig = pl.figure()
-        barrier_x = self.barrier_xy_by_trial[trialnum][0]
-        barrier_y = self.barrier_xy_by_trial[trialnum][1]
-        barrier_diameter = self.barrier_diam
-        xcoords = self.xy_coords_by_trial[trialnum][0]
-        ycoords = self.xy_coords_by_trial[trialnum][1]
-        axes = fig.add_subplot(111)
-        barrier_plot = pl.Circle((barrier_x, barrier_y),
-                                 barrier_diameter / 2, fc='r')
-        axes.add_artist(barrier_plot)
-        axes.grid(False)
 
-# see if you can use colorline for more than just the xy coords. would be nice to plot all escapes this way, and be able to pass the cmap as an arg to colorline
-        colorline(
-            np.array(xcoords[self.timerange[0]:self.timerange[1]]),
-            np.array(ycoords[self.timerange[0]:self.timerange[1]]))
-        axes.set_xlim(barrier_x - 200, barrier_x + 200)
-        axes.set_ylim(barrier_y - 200, barrier_y + 200)
-        axes.set_aspect('equal')
-        colo = ScalarMappable(cmap='afmhot')
-        colo.set_array(
-            np.arange(
-                float(self.timerange[0]) / 500, float(self.timerange[1]) / 500,
-                .1))
-        pl.colorbar(colo)
-        pl.title('Trial' + str(trialnum))
-        pl.show()
+# this function asks if there are any coordinates that are within 2 pixels of
+# the barrier between 10ms after the escape and the end of the escape. if there
+# are 2 (allowing 1 for noise) its a collision
+
+    def collision_course(self, *plot):
+
+        def collision(xb, yb, bd, x, y):
+            proximity_val = 5
+            vec = np.sqrt((x - xb)**2 + (y - yb)**2)
+            if math.isnan(x):
+                return False
+            elif vec < (bd / 2) + proximity_val:
+                return True
+            else:
+                return False
+            
+        for trialnum in range(len(self.xy_coords_by_trial)):
+            barrier_x = self.barrier_xy_by_trial[trialnum][0]
+            barrier_y = self.barrier_xy_by_trial[trialnum][1]
+            barrier_diameter = self.barrier_diam
+            xcoords = self.xy_coords_by_trial[trialnum][0]
+            ycoords = self.xy_coords_by_trial[trialnum][1]
+            collision_coords = 0
+            if not math.isnan(self.escape_latencies[trialnum]):
+                t_init = self.timerange[0] + self.escape_latencies[
+                    trialnum] + 5
+            else:
+                t_init = self.timerange[0] + self.pre_c + 5
+            for fish_x, fish_y in zip(
+                    xcoords[int(t_init):self.timerange[1]],
+                    ycoords[int(t_init):self.timerange[1]]):
+                if collision(barrier_x, barrier_y, self.barrier_diam,
+                             fish_x, fish_y):
+                    collision_coords += 1
+            if collision_coords > 1:
+                self.collisions.append(1)
+            else:
+                self.collisions.append(0)
+            if plot != ():
+                fig = pl.figure()
+                axes = fig.add_subplot(111)
+                barrier_plot = pl.Circle((barrier_x, barrier_y),
+                                         barrier_diameter / 2, fc='r')
+                axes.add_artist(barrier_plot)
+                axes.grid(False)
+                colorline(
+                    np.array(xcoords[self.timerange[0]:self.timerange[1]]),
+                    np.array(ycoords[self.timerange[0]:self.timerange[1]]))
+                axes.set_xlim(barrier_x - 200, barrier_x + 200)
+                axes.set_ylim(barrier_y - 200, barrier_y + 200)
+                axes.set_aspect('equal')
+                colo = ScalarMappable(cmap='afmhot')
+                colo.set_array(
+                    np.arange(
+                        float(self.timerange[0]) / 500, float(self.timerange[1]) / 500,
+                        .1))
+                pl.colorbar(colo)
+                pl.title('Trial' + str(trialnum))
+                pl.show()
 
 # for each tap trial, a raw video of the escape is recorded and a background
 # saved to use for contour finding. this function calls the contourfinding
@@ -280,7 +366,7 @@ class Escapes:
                         self.backgrounds[trial], x, y)
                 except IndexError:
                     background_roi = slice_background(
-                        self.backgrounds[trial-1], x, y)
+                        self.backgrounds[-1], x, y)
                 brsub = cv2.absdiff(im, background_roi).astype(np.uint8)
                 fishcont, mid_x, mid_y, th = self.contourfinder(brsub, 30)
                 contour_list.append(fishcont)
@@ -349,7 +435,7 @@ class Escapes:
 
 # this function calculates a vector from the fish's position to the
 # barrier it is escaping
-            
+
     def vec_to_barrier(self):
         for trial, xy in enumerate(self.xy_coords_by_trial):
             vecs_to_barrier = []
@@ -434,94 +520,14 @@ class Escapes:
         self.find_initial_conditions()
         self.body_curl()
         self.find_cstart(plotc)
-
-# Here want to assess the probability of colliding per trial of the d or l trials
-# provided that n goes in a particular direction. can also put a collision truth
-# for the l and d trials into a member variable that is cleared before you add it.
-# this collision function seems fine to me but has to be restricted to the
-# immediate aftermath of the stimulus time (i.e. between stim time and stim time + 30)
-# i'm not sure that this is generally useful
-
-    def infer_collisions(self, barrier_escape_object, plotornot):
-
-        def collision(xb, yb, bd, x, y):
-            vec = np.sqrt((x - xb)**2 + (y - yb)**2)
-            if math.isnan(x):
-                return False
-            elif vec < (bd / 2) + 2:
-                return True
-            else:
-                return False
-            
-        angle = barrier_escape_object.initial_conditions[0]
-        mag = barrier_escape_object.initial_conditions[1]
-        if plotornot:
-            turn_fig = pl.figure()
-            turn_ax = turn_fig.add_subplot(111)
-            turn_ax.set_xlim([-100, 100])
-            turn_ax.set_ylim([-100, 100])
-            turn_ax.set_aspect('equal')
-        timerange = self.timerange
-        if 0 <= angle < np.pi / 2:
-            barrier_x = np.sin(angle) * mag
-            barrier_y = np.cos(angle) * mag
-        elif angle >= np.pi / 2:
-            barrier_x = np.sin(np.pi - angle) * mag
-            barrier_y = -np.cos(np.pi - angle) * mag
-        elif 0 >= angle > -np.pi / 2:
-            barrier_x = -np.sin(-angle) * mag
-            barrier_y = np.cos(-angle) * mag
-        elif angle <= -np.pi / 2:
-            barrier_x = -np.sin(np.pi + angle) * mag
-            barrier_y = -np.cos(np.pi + angle) * mag
-        barr = pl.Circle((barrier_x, barrier_y),
-                         barrier_escape_object.barrier_diam / 2,
-                         fc='r')
-
-        collision_trials = []
-        for trial_counter, xy_coords in enumerate(self.xy_coords_by_trial):
-            ha_init = self.initial_conditions[trial][0]
-            if not math.isnan(ha_init):
-                zipped_coords = zip(xy_coords[0], xy_coords[1])
-                escape_coords = rotate_coords(zipped_coords, -ha_init)
-                x_escape = np.array(
-                    [x for [x, y] in escape_coords[timerange[0]:timerange[1]]])
-                x_escape = x_escape - x_escape[0]
-                y_escape = np.array(
-                    [y for [x, y] in escape_coords[timerange[0]:timerange[1]]])
-                y_escape = y_escape - y_escape[0]
-                for x_esc, y_esc in zip(x_escape, y_escape):
-                    collide = collision(barrier_x,
-                                        barrier_y,
-                                        barrier_escape_object.barrier_diam,
-                                        x_esc, y_esc)
-                    if collide and trial_counter not in collision_trials:
-                        collision_trials.append(trial_counter)
-                if plotornot:
-                    turn_ax.plot(
-                        x_escape,
-                        y_escape, 'g')
-                    turn_ax.text(
-                        x_escape[-1],
-                        y_escape[-1],
-                        str(trial_counter),
-                        size=10,
-                        backgroundcolor='w')
-        if plotornot:
-            turn_ax.add_patch(barr)
-            pl.show()
-        print(len(collision_trials))
-        print('out of')
-        print(len(self.xy_coords_by_trial))
-        barrier_escape_object.collision_prob.append(
-            float(len(collision_trials)) / len(self.xy_coords_by_trial))
+        self.collision_course()
 
 
 # this function splits up escapes by whether the barrier was to the
 # right or left of the fish at the onset of the tap.
 # you can chose to plot these trajectories for a single fish or
 # wrap this function and plot many fish.
-        
+
     def escapes_vs_barrierloc(self, *dontplot):
         if dontplot == ():
             turn_fig = pl.figure()
@@ -593,8 +599,15 @@ class Escapes:
             ta_maxandmin = [x for x in sorted(ta_min + ta_max) if (
                 (x > stim_init) and abs(
                     ta[x]) > c_thresh)]
+            print ta_maxandmin
+            print ta_min
+            print ta_max
             if not ta_maxandmin:
-                return []
+                print('nans to cstart varbs')
+                self.cstart_rel_to_barrier.append(np.nan)
+                self.cstart_angles.append(np.nan)
+                self.escape_latencies.append(np.nan)
+                continue
             if plotornot:
                 pl.plot(ta)
                 pl.plot([ta_maxandmin[0]], [0], marker='.', color='r')
@@ -941,119 +954,16 @@ def rotate_contour(image, angle, contour):
         rotated_contour.append([[new_point[0][0], new_point[1][0]]])
     return np.array(rotated_contour).astype(np.int32)
 
-    
+
 def magvector(vec):
     mag = np.sqrt(np.dot(vec, vec))
     return mag
 
 
-def experiment_collector(drct_list, *new_exps):
-
-    os.chdir('/Users/nightcrawler2/Escape-Analysis/')
-    for newexp_dirct in new_exps:
-        fish_id = '/' + newexp_dirct
-        pl.ioff()
-        area_thresh = 47
-        esc_dir = os.getcwd() + fish_id
-        plotcstarts = False
-        try:
-            escape_cond1 = Escapes('l', esc_dir, area_thresh)
-            escape_cond1.trial_analyzer(plotcstarts)
-            escape_cond1.escapes_vs_barrierloc()
-            escape_cond1.exporter()
-        except IOError:
-            print("No L Trials")
-        try:
-            escape_cond2 = Escapes('d', esc_dir, area_thresh)
-            escape_cond2.trial_analyzer(plotcstarts)
-            escape_cond2.escapes_vs_barrierloc()
-            escape_cond2.exporter()
-        except IOError:
-            print("No D Trials")
-        try:
-            escape_nb = Escapes('n', esc_dir, area_thresh)
-            escape_nb.trial_analyzer(plotcstarts)
-            escape_nb.escapes_vs_barrierloc()
-            escape_nb.exporter()
-        except IOError:
-            print("No N Trials")
-    hb_l = []
-    hb_d = []
-    hb_n = []
-    barr_right_l = []
-    barr_left_l = []
-    barr_right_d = []
-    barr_left_d = []
-    barr_right_n = []
-    barr_left_n = []
-    cstart_percentage_l = []
-    cstart_percentage_d = []
-    cstart_percentage_n = []
-    cstart_timing_l = []
-    cstart_timing_d = []
-    cstart_timing_n = []
-    cstart_angle_l = []
-    cstart_angle_d = []
-    cstart_angle_n = []
-    entries_into_center_l = []
-    entries_into_center_d = []
-    entries_into_center_n = []
-    time_per_entry_l = []
-    time_per_entry_d = []
-    time_per_entry_n = []
-    
-    for drct in drct_list:
-        try:
-            esc_l = pickle.load(open(
-                drct + '/escapes_l.pkl', 'rb'))
-            hb_l += esc_l.h_vs_b_plot(0)
-            br_l, bl_l = esc_l.escapes_vs_barrierloc(1)
-            barr_right_l += br_l
-            barr_left_l += bl_l
-            cstart_percentage_l.append(np.sum(
-                esc_l.cstart_rel_to_barrier) / float(
-                    len(esc_l.cstart_rel_to_barrier)))
-            cstart_timing_l += esc_l.escape_latencies
-            cstart_angle_l += esc_l.cstart_angles
-            entries_into_center_l += len(esc_l.numgrayframes)
-            time_per_entry_l += esc_l.numgrayframes
-        except IOError:
-            pass
-        
-        try:
-            esc_d = pickle.load(open(
-                drct + '/escapes_d.pkl', 'rb'))
-            hb_d += esc_d.h_vs_b_plot(0)
-            br_d, bl_d = esc_d.escapes_vs_barrierloc(1)
-            barr_right_d += br_d
-            barr_left_d += bl_d
-            cstart_percentage_d.append(np.sum(
-                esc_d.cstart_rel_to_barrier) / float(
-                    len(esc_d.cstart_rel_to_barrier)))
-            cstart_timing_d += esc_d.escape_latencies
-            cstart_angle_d += esc_d.cstart_angles
-            entries_into_center_d += len(esc_d.numgrayframes)
-            time_per_entry_d += esc_d.numgrayframes
-        except IOError:
-            pass
-        
-        try:
-            esc_n = pickle.load(open(
-                drct + '/escapes_n.pkl', 'rb'))
-            hb_n += esc_n.h_vs_b_plot(0)
-            br_n, bl_n = esc_n.escapes_vs_barrierloc(1)
-            barr_right_n += br_d
-            barr_left_n += bl_d
-            cstart_percentage_n.append(np.sum(
-                esc_n.cstart_rel_to_barrier) / float(
-                    len(esc_n.cstart_rel_to_barrier)))
-            cstart_timing_n += esc_n.escape_latencies
-            cstart_angle_n += esc_n.cstart_angles
-            entries_into_center_n += len(esc_n.numgrayframes)
-            time_per_entry_n += esc_n.numgrayframes
-        except IOError:
-            pass
-
+def plot_all_results(cond_collector_list):
+    cond_list = [c.condition for c in cond_collector_list]
+    if cond_list != ['l', 'd', 'n']:
+        raise Exception('cond_collector in wrong order')
     cpal = sb.color_palette()
     fig, axes = pl.subplots(1, 1)
     axes.set_title('Fish Orientation vs. Barrier (rad)')
@@ -1069,76 +979,140 @@ def experiment_collector(drct_list, *new_exps):
     axes2[0].set_title('Barrier: Lights On')
     axes2[1].set_title('Barrier: Lights Off')
     axes2[2].set_title('No Barrier')
-    
-    try:
-        sb.tsplot(np.array(hb_l), ax=axes)
-        for r_coords, l_coords in izip_longest(barr_left_l, barr_right_l):
-            if r_coords is not None:
-                axes2[0].plot(r_coords[0], r_coords[1],
-                              color=np.array(cpal[0]) * .5)
-            if l_coords is not None:
-                axes2[0].plot(l_coords[0], l_coords[1],
-                              color=cpal[0] * 1 / np.max(cpal[0]))
-    except RuntimeError:
-        pass
-    
-    try:
-        sb.tsplot(np.array(hb_d), ax=axes, color=cpal[1])
-        for r_coords, l_coords in izip_longest(barr_left_d, barr_right_d):
-            if r_coords is not None:
-                axes2[1].plot(r_coords[0], r_coords[1],
-                              color=np.array(cpal[1]) * .5)
-            if l_coords is not None:
-                axes2[1].plot(l_coords[0], l_coords[1],
-                              color=cpal[1] * 1 / np.max(cpal[1]))
-    except RuntimeError:
-        pass
-    
-    try:
-        sb.tsplot(np.array(hb_n), ax=axes, color=cpal[2])
-        for r_coords, l_coords in izip_longest(barr_left_n, barr_right_n):
-            if r_coords is not None:
-                axes2[2].plot(r_coords[0], r_coords[1],
-                              color=np.array(cpal[2]) * .5)
-            if l_coords is not None:
-                axes2[2].plot(l_coords[0], l_coords[1],
-                              color=cpal[2] * 1 / np.max(cpal[2]))
-    except RuntimeError:
-        pass
+    cond_data_arrays = []
+    for cond_ind, cond_data_as_list in enumerate(cond_collector_list):
+        cond_data = cond_data_as_list.convert_to_nparrays()
+        cond_data_arrays.append(cond_data)
+        sb.tsplot(np.array(cond_data['Heading vs Barrier']),
+                  ax=axes, estimator=np.nanmean, color=cpal[cond_ind])
+        for r_coords, l_coords in izip_longest(
+                cond_data['Barrier On Left Trajectories'],
+                cond_data['Barrier On Right Trajectories']):
+                if r_coords is not None:
+                    axes2[cond_ind].plot(r_coords[0], r_coords[1],
+                                         color=np.array(cpal[cond_ind]) * .5)
+                if l_coords is not None:
+                    axes2[cond_ind].plot(l_coords[0], l_coords[1],
+                                         color=cpal[cond_ind] * 1 / np.max(
+                                             cpal[cond_ind]))
 
     pl.tight_layout()
-    barfig, barax = pl.subplots(1, 3)
-    barax[0].set_title('% CStart Away from Barrier')
-    barax[1].set_title('CStart Latency (ms)')
-    barax[2].set_title('CStart Angle (deg)')
-    barax[3].set_title('# Entires to Barrier Zone')
-    barax[4].set_title('Time Spent in Barrier Zone')
-    sb.barplot(data=[cdir for cdir in [cstart_percentage_l,
-                                       cstart_percentage_d,
-                                       cstart_percentage_n]
-                     if cdir != []], ax=barax[0])
-    sb.violinplot(data=[2*np.array(clat) for clat in [cstart_timing_l,
-                                                      cstart_timing_d,
-                                                      cstart_timing_n]
-                        if clat != []],
-                  ax=barax[1])
-    sb.violinplot(data=[cang for cang in [cstart_angle_l,
-                                          cstart_angle_d,
-                                          cstart_angle_n] if cang != []],
-                  ax=barax[2])
-    sb.violinplot(data=[num_entries for num_entries in [entries_into_center_l,
-                                                        entries_into_center_d,
-                                                        entries_into_center_n]
-                        if num_entries != []], ax=barax[3])
-    sb.violinplot(data=[dur for dur in [time_per_entry_l,
-                                        time_per_entry_d,
-                                        time_per_entry_n] if dur != []],
-                  ax=barax[4])
-
+    barfig, barax = pl.subplots(2, 3, figsize=(8, 6))
+    barax[0, 0].set_title('% CStart Away from Barrier')
+    barax[1, 0].set_title('# Collisions')
+    barax[0, 1].set_title('CStart Latency (ms)')
+    barax[0, 2].set_title('CStart Angle (deg)')
+    barax[1, 1].set_title('# Entires to Barrier Zone')
+    barax[1, 2].set_title('Time Spent in Barrier Zone')
+    sb.barplot(data=[cdir[~np.isnan(cdir)] for
+                     cdir in [c['Correct CStart Percentage']
+                              for c in cond_data_arrays]],
+               ax=barax[0, 0], estimator=np.nanmean)
+    sb.barplot(data=[clp[~np.isnan(clp)] for
+                     clp in [c['Collision Percentage']
+                             for c in cond_data_arrays]],
+               ax=barax[1, 0], estimator=np.nanmean)
+    sb.violinplot(data=[2*clat[~np.isnan(clat)] for
+                        clat in [c['CStart Latency']
+                                 for c in cond_data_arrays]],
+                  ax=barax[0, 1])
+    sb.violinplot(data=[cang[~np.isnan(cang)] for
+                        cang in [c['CStart Angle']
+                                 for c in cond_data_arrays]],
+                  ax=barax[0, 2])
+    sb.violinplot(data=[num_entries[~np.isnan(num_entries)] for
+                        num_entries in [c['Entries into Center']
+                                        for c in cond_data_arrays]],
+                  ax=barax[1, 1])
+    sb.violinplot(data=[dur[~np.isnan(dur)] for
+                        dur in [c['Time Per Center Entry']
+                                for c in cond_data_arrays]],
+                  ax=barax[1, 2])
     pl.tight_layout()
     pl.show()
 
+
+
+def experiment_collector(drct_list, *new_exps):
+
+    cond_collector_l = Condition_Collector('l')
+    cond_collector_d = Condition_Collector('d')
+    cond_collector_n = Condition_Collector('n')
+    if new_exps != ():
+        new_exps = new_exps[0]
+    os.chdir('/Users/nightcrawler2/Escape-Analysis/')
+    for newexp_dirct in new_exps:
+        fish_id = '/' + newexp_dirct
+        pl.ioff()
+        area_thresh = 47
+        esc_dir = os.getcwd() + fish_id
+        print esc_dir
+        plotcstarts = False
+        try:
+            escape_cond1 = Escapes('l', esc_dir, area_thresh)
+            escape_cond1.trial_analyzer(plotcstarts)
+            escape_cond1.exporter()
+        except IOError:
+            print("No L Trials")
+        try:
+            escape_cond2 = Escapes('d', esc_dir, area_thresh)
+            escape_cond2.trial_analyzer(plotcstarts)
+            escape_cond2.exporter()
+        except IOError:
+            print("No D Trials")
+        try:
+            escape_nb = Escapes('n', esc_dir, area_thresh)
+            escape_nb.trial_analyzer(plotcstarts)
+            escape_nb.exporter()
+        except IOError:
+            print("No N Trials")
+
+    for drct in drct_list:
+        try:
+            print('loading l trials')
+            esc_l = pickle.load(open(
+                drct + '/escapes_l.pkl', 'rb'))
+            cond_collector_l.update_ddict(esc_l)
+        except IOError:
+            pass
+        try:
+            print('loading d trials')
+            esc_d = pickle.load(open(
+                drct + '/escapes_d.pkl', 'rb'))
+            cond_collector_d.update_ddict(esc_d)
+        except IOError:
+            pass
+        try:
+            esc_n = pickle.load(open(
+                drct + '/escapes_n.pkl', 'rb'))
+            cond_collector_n.update_ddict(esc_n)
+        except IOError:
+            pass
+
+    final_collectors = [cond_collector_l, cond_collector_d, cond_collector_n]
+    plot_all_results(final_collectors)
+    return final_collectors
+
+    
     
 if __name__ == '__main__':
 
-    experiment_collector(['022519_1'])
+    hd = experiment_collector(['030719_1', '030719_2', '030719_3'],
+                              ['030719_1', '030719_2', '030719_3'])
+    
+
+
+    
+    # escape_cond2 = Escapes('d', esc_dir, area_thresh)
+    # escape_cond2.trial_analyzer(plotcstarts)
+    # escape_cond2.escapes_vs_barrierloc()
+    # esc_dir = os.getcwd() + '/030719_1'
+    # pl.ioff()
+    # area_thresh = 47
+    # plotcstarts = False
+    # escape_cond1 = Escapes('l', esc_dir, area_thresh)
+    # escape_cond1.trial_analyzer(plotcstarts)
+    # escape_cond1.escapes_vs_barrierloc()
+
+#    esc_l = pickle.load(open(drct + '/escapes_l.pkl', 'rb'))
+
