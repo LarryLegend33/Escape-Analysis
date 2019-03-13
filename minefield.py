@@ -1,6 +1,7 @@
 ﻿import os
 import numpy as np
 import math
+
 from matplotlib import pyplot as pl
 from matplotlib.cm import ScalarMappable
 from matplotlib.collections import LineCollection
@@ -19,6 +20,7 @@ from astropy.convolution import convolve, Gaussian1DKernel
 from matplotlib.colors import ListedColormap, BoundaryNorm
 from matplotlib.image import AxesImage
 from matplotlib.colors import Colormap
+import pdb
 from itertools import izip_longest
 
 
@@ -39,7 +41,7 @@ class Condition_Collector:
                             'CStart Latency': [],
                             'CStart Angle': [],
                             'Correct CStart Percentage': [],
-                            'Entries into Center': [],
+                            'Taps Per Entry Into Arena': [],
                             'Time Per Center Entry': [],
                             'Barrier On Left Trajectories': [],
                             'Barrier On Right Trajectories': []}
@@ -52,21 +54,26 @@ class Condition_Collector:
             br, bl = escape_obj.escapes_vs_barrierloc(1)
             self.escape_data['Barrier On Left Trajectories'] += bl
             self.escape_data['Barrier On Right Trajectories'] += br
-            self.escape_data['Correct CStart Percentage'].append(np.nansum(
-                escape_obj.cstart_rel_to_barrier) / float(
-                    len(escape_obj.cstart_rel_to_barrier)))
+            non_nan_cstarts = [cs for cs in escape_obj.cstart_rel_to_barrier
+                               if not math.isnan(cs)]
+            self.escape_data['Correct CStart Percentage'].append(np.sum(
+                non_nan_cstarts) / float(
+                    len(non_nan_cstarts)))
             if escape_obj.stim_times_accurate:
                 self.escape_data[
                     'CStart Latency'] += escape_obj.escape_latencies
             self.escape_data['CStart Angle'] += escape_obj.cstart_angles
             if len(escape_obj.numgrayframes) != 0:
-                self.escape_data['Entries into Center'].append(
-                    len(escape_obj.numgrayframes))
+                self.escape_data['Taps Per Entry Into Arena'].append(
+                    len(escape_obj.xy_coords_by_trial) / float(
+                        len(escape_obj.numgrayframes)))
                 self.escape_data[
                     'Time Per Center Entry'] += escape_obj.numgrayframes
+            non_nan_collisions = [col for col in escape_obj.collisions
+                                  if not math.isnan(col)]
             self.escape_data['Collision Percentage'].append(
-                np.nansum(escape_obj.collisions) / float(
-                    len(escape_obj.collisions)))
+                np.sum(non_nan_collisions) / float(
+                    len(non_nan_collisions)))
 
     def convert_to_nparrays(self):
         np_array_dict = {}
@@ -599,20 +606,19 @@ class Escapes:
             ta_maxandmin = [x for x in sorted(ta_min + ta_max) if (
                 (x > stim_init) and abs(
                     ta[x]) > c_thresh)]
-            print ta_maxandmin
-            print ta_min
-            print ta_max
+            if plotornot:
+                pl.plot(ta)
+                pl.plot(self.tailangle_sums[trial])
+                if len(ta_maxandmin) != 0:
+                    pl.plot([ta_maxandmin[0]], [0], marker='.', color='r')
+                pl.title('trial' + str(trial))
+                pl.show()
             if not ta_maxandmin:
                 print('nans to cstart varbs')
                 self.cstart_rel_to_barrier.append(np.nan)
                 self.cstart_angles.append(np.nan)
                 self.escape_latencies.append(np.nan)
                 continue
-            if plotornot:
-                pl.plot(ta)
-                pl.plot([ta_maxandmin[0]], [0], marker='.', color='r')
-                pl.title('trial' + str(trial))
-                pl.show()
             c_start_angle = ta[ta_maxandmin[0]]
             c_start_ind = ta_maxandmin[0]
             self.cstart_angles.append(c_start_angle)
@@ -620,6 +626,7 @@ class Escapes:
     # Get latency here based on stim index and c_start_index
 
             if not math.isnan(c_start_angle):
+#                    np.abs(self.initial_conditions[trial][0]) > .2):
                 if np.sum(
                         np.sign(
                             [c_start_angle,
@@ -676,7 +683,7 @@ class Escapes:
                 else:
                     return contours[0], x, y, th
             else:
-                print('thresh too low')
+#                print('thresh too low')
                 return np.array([]), float('NaN'), float('NaN'), np.zeros(
                     [im.shape[0], im.shape[1]]).astype(np.uint8)
         else:
@@ -703,7 +710,6 @@ class Escapes:
                 fourcc, fps, (80, 80), True)
             threshvid = imageio.get_reader(self.directory + '/thresh' + str(
                 trial)+self.condition+'.AVI', 'ffmpeg')
-            sum_angles = []
             all_angles = []
             ha_adjusted = deque([np.mod(90-(np.degrees(angle)), 360)
                                  for angle in self.ha_in_timeframe[trial]])
@@ -724,7 +730,7 @@ class Escapes:
                 #     print body
                 #     print("ha messed")
                 if body.shape[0] == 0:
-                    sum_angles.append(np.nan)
+                    all_angles.append([])
                     cstart_vid.write(im_rot_color)
                     continue
 # now find the point on the contour that has the smallest y coord (i.e. is closest to the top). may be largest y coord?
@@ -756,9 +762,15 @@ class Escapes:
                 cv2.drawContours(im_rot_color, [body], -1, (0, 255, 0), 1)
                 cstart_vid.write(im_rot_color)
                 body_gen = toolz.itertoolz.sliding_window(2, avg_body_points)
-                body_point_diffs = [
-                    (0, 1)] + [
-                        (b[0]-a[0], b[1]-a[1]) for a, b in body_gen]
+                # body_point_diffs = [
+                #     (0, 1)] + [
+                #         (b[0]-a[0], b[1]-a[1]) for a, b in body_gen]
+
+# got rid of the first angle so it is agnostic to the reference when the
+# cstart is
+# happening. cstart messes up the reference
+                body_point_diffs = [(b[0]-a[0],
+                                     b[1]-a[1]) for a, b in body_gen]
     #            print body_point_diffs
                 angles = []
                 # Angles are correct given body_points. 
@@ -879,8 +891,8 @@ def outlier_filter(xcoords, ycoords, missed_inds):
             new_x.append(crds[0])
             new_y.append(crds[1])
         else:
-            print i
-            print vmag
+#            print i
+#            print vmag
             missed_inds.append(i)
             new_x.append(new_x[-1])
             new_y.append(new_y[-1])
@@ -1002,7 +1014,7 @@ def plot_all_results(cond_collector_list):
     barax[1, 0].set_title('# Collisions')
     barax[0, 1].set_title('CStart Latency (ms)')
     barax[0, 2].set_title('CStart Angle (deg)')
-    barax[1, 1].set_title('# Entires to Barrier Zone')
+    barax[1, 1].set_title('Probability of Tap Per Arena Entry')
     barax[1, 2].set_title('Time Spent in Barrier Zone')
     sb.barplot(data=[cdir[~np.isnan(cdir)] for
                      cdir in [c['Correct CStart Percentage']
@@ -1012,29 +1024,27 @@ def plot_all_results(cond_collector_list):
                      clp in [c['Collision Percentage']
                              for c in cond_data_arrays]],
                ax=barax[1, 0], estimator=np.nanmean)
-    sb.violinplot(data=[2*clat[~np.isnan(clat)] for
-                        clat in [c['CStart Latency']
+    sb.boxplot(data=[2*clat[~np.isnan(clat)] for
+                     clat in [c['CStart Latency']
                                  for c in cond_data_arrays]],
-                  ax=barax[0, 1])
-    sb.violinplot(data=[cang[~np.isnan(cang)] for
-                        cang in [c['CStart Angle']
-                                 for c in cond_data_arrays]],
-                  ax=barax[0, 2])
-    sb.violinplot(data=[num_entries[~np.isnan(num_entries)] for
-                        num_entries in [c['Entries into Center']
-                                        for c in cond_data_arrays]],
-                  ax=barax[1, 1])
-    sb.violinplot(data=[dur[~np.isnan(dur)] for
-                        dur in [c['Time Per Center Entry']
-                                for c in cond_data_arrays]],
-                  ax=barax[1, 2])
+               ax=barax[0, 1])
+    sb.boxplot(data=[cang[~np.isnan(cang)] for
+                     cang in [c['CStart Angle']
+                              for c in cond_data_arrays]],
+               ax=barax[0, 2])
+    sb.boxplot(data=[num_entries[~np.isnan(num_entries)] for
+                     num_entries in [c['Taps Per Entry Into Arena']
+                                     for c in cond_data_arrays]],
+               ax=barax[1, 1])
+    sb.boxplot(data=[dur[~np.isnan(dur)] for
+                     dur in [c['Time Per Center Entry']
+                             for c in cond_data_arrays]],
+               ax=barax[1, 2])
     pl.tight_layout()
     pl.show()
 
 
-
 def experiment_collector(drct_list, *new_exps):
-
     cond_collector_l = Condition_Collector('l')
     cond_collector_d = Condition_Collector('d')
     cond_collector_n = Condition_Collector('n')
@@ -1097,22 +1107,27 @@ def experiment_collector(drct_list, *new_exps):
     
 if __name__ == '__main__':
 
-    hd = experiment_collector(['030719_1', '030719_2', '030719_3'],
-                              ['030719_1', '030719_2', '030719_3'])
+    # hd = experiment_collector(['030519_1', '030519_2',
+    #                            '030719_1', '030719_2', '030719_3'],
+    #                           ['030519_1', '030519_2',
+    #                            '030719_1', '030719_2', '030719_3'])
+
+    hd = experiment_collector(['030519_1', '030519_2',
+                               '030719_1', '030719_2', '030719_3'])
+    
     
 
-
-    
     # escape_cond2 = Escapes('d', esc_dir, area_thresh)
     # escape_cond2.trial_analyzer(plotcstarts)
     # escape_cond2.escapes_vs_barrierloc()
     # esc_dir = os.getcwd() + '/030719_1'
     # pl.ioff()
     # area_thresh = 47
-    # plotcstarts = False
+    # plotcstarts = True
     # escape_cond1 = Escapes('l', esc_dir, area_thresh)
     # escape_cond1.trial_analyzer(plotcstarts)
     # escape_cond1.escapes_vs_barrierloc()
 
 #    esc_l = pickle.load(open(drct + '/escapes_l.pkl', 'rb'))
 
+# HOW MANY TIMES THEY VISIT THE TRIGGER ZONE PROVIDED THEYVE ENTERED THE FOREST
