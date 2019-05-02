@@ -1,7 +1,6 @@
 ﻿import os
 import numpy as np
 import math
-
 from matplotlib import pyplot as pl
 from matplotlib.cm import ScalarMappable
 from matplotlib.collections import LineCollection
@@ -893,7 +892,7 @@ def outlier_filter(xcoords, ycoords, missed_inds):
         else:
 #            print i
 #            print vmag
-            missed_inds.append(i)
+            missed_inds.append(i+1)
             new_x.append(new_x[-1])
             new_y.append(new_y[-1])
             xcoords = new_x + xcoords[i+2:]
@@ -1044,10 +1043,11 @@ def plot_all_results(cond_collector_list):
     pl.show()
 
 
-def experiment_collector(drct_list, *new_exps):
-    cond_collector_l = Condition_Collector('l')
-    cond_collector_d = Condition_Collector('d')
-    cond_collector_n = Condition_Collector('n')
+
+def experiment_collector(drct_list, cond_list, *new_exps):
+    cond_collector_1 = Condition_Collector(cond_list[0])
+    cond_collector_2 = Condition_Collector(cond_list[1])
+    cond_collector_3 = Condition_Collector(cond_list[2])
     if new_exps != ():
         new_exps = new_exps[0]
     os.chdir('/Users/nightcrawler2/Escape-Analysis/')
@@ -1058,48 +1058,38 @@ def experiment_collector(drct_list, *new_exps):
         esc_dir = os.getcwd() + fish_id
         print esc_dir
         plotcstarts = False
-        try:
-            escape_cond1 = Escapes('l', esc_dir, area_thresh)
-            escape_cond1.trial_analyzer(plotcstarts)
-            escape_cond1.exporter()
-        except IOError:
-            print("No L Trials")
-        try:
-            escape_cond2 = Escapes('d', esc_dir, area_thresh)
-            escape_cond2.trial_analyzer(plotcstarts)
-            escape_cond2.exporter()
-        except IOError:
-            print("No D Trials")
-        try:
-            escape_nb = Escapes('n', esc_dir, area_thresh)
-            escape_nb.trial_analyzer(plotcstarts)
-            escape_nb.exporter()
-        except IOError:
-            print("No N Trials")
-
+        for cond in cond_list:
+            try:
+                escape_obj = Escapes(cond, esc_dir, area_thresh)
+                escape_obj.trial_analyzer(plotcstarts)
+                escape_obj.exporter()
+            except IOError:
+                print("No " + cond + " Trials")
+# CATCH FOR SPLITTING ACCORDING TO TRIAL GOES HERE. 
+            
     for drct in drct_list:
         try:
-            print('loading l trials')
-            esc_l = pickle.load(open(
-                drct + '/escapes_l.pkl', 'rb'))
-            cond_collector_l.update_ddict(esc_l)
+            print('loading cond1 trials')
+            esc_1 = pickle.load(open(
+                drct + '/escapes_' + cond_list[0] + '.pkl', 'rb'))
+            cond_collector_1.update_ddict(esc_1)
         except IOError:
             pass
         try:
-            print('loading d trials')
-            esc_d = pickle.load(open(
-                drct + '/escapes_d.pkl', 'rb'))
-            cond_collector_d.update_ddict(esc_d)
+            print('loading cond2 trials')
+            esc_2 = pickle.load(open(
+                drct + '/escapes_' + cond_list[1] + '.pkl', 'rb'))
+            cond_collector_2.update_ddict(esc_2)
         except IOError:
             pass
         try:
-            esc_n = pickle.load(open(
-                drct + '/escapes_n.pkl', 'rb'))
-            cond_collector_n.update_ddict(esc_n)
+            esc_3 = pickle.load(open(
+                drct + '/escapes_' + cond_list[2] + '.pkl', 'rb'))
+            cond_collector_3.update_ddict(esc_3)
         except IOError:
             pass
 
-    final_collectors = [cond_collector_l, cond_collector_d, cond_collector_n]
+    final_collectors = [cond_collector_1, cond_collector_2, cond_collector_3]
     plot_all_results(final_collectors)
     return final_collectors
 
