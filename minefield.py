@@ -36,6 +36,7 @@ class Condition_Collector:
     def __init__(self, condition):
         self.condition = condition
         self.escape_data = {'Heading vs Barrier': [],
+                            'Distance From Barrier After Escape': [],
                             'Collision Percentage': [],
                             'CStart Latency': [],
                             'CStart Angle': [],
@@ -49,6 +50,14 @@ class Condition_Collector:
         if escape_obj.condition != self.condition:
             raise Exception('input condition mistmatch with class')
         else:
+            last_x = [c[0][self.escape_data.timeframe[1]]
+                      for c in self.escape_data.xy_coords_by_trial]
+            last_y = [c[1][self.escape_data.timeframe[1]]
+                      for c in self.escape_data.xy_coords_by_trial]
+            last_xy = zip(last_x, last_y)
+            self.escape_data['Distance From Barrier After Escape'].append(
+                [magvector(xyl[0] - bxy[0], xyl[1] - bxy[1]) for
+                 xyl, bxy in zip(last_xy, self.barrier_xy_by_trial)])
             self.escape_data['Heading vs Barrier'] += escape_obj.h_vs_b_plot(0)
             br, bl = escape_obj.escapes_vs_barrierloc(1)
             self.escape_data['Barrier On Left Trajectories'] += bl
@@ -58,7 +67,7 @@ class Condition_Collector:
             self.escape_data['Correct CStart Percentage'].append(np.sum(
                 non_nan_cstarts) / float(
                     len(non_nan_cstarts)))
-            if escape_obj.stim_times_accurate:
+            if np.array(escape_obj.stim_times_accurate).all():
                 self.escape_data[
                     'CStart Latency'] += escape_obj.escape_latencies
             self.escape_data['CStart Angle'] += escape_obj.cstart_angles
@@ -83,7 +92,7 @@ class Condition_Collector:
 
 class Escapes:
 
-    def __init__(self, exp_type, directory, area_thresh):
+    def __init__(self, exp_type, directory, area_thresh, *sub_class):
         self.pre_c = 10
         self.area_thresh = area_thresh
         self.directory = directory
@@ -93,9 +102,8 @@ class Escapes:
         self.missed_inds_by_trial = []
         self.contours_by_trial = []
     # this asks whether there is a bias in direction based on the HBO. 
-        self.pre_escape_bouts = []
         self.stim_init_times = []
-        self.stim_times_accurate = True
+        self.stim_times_accurate = []
         self.escape_latencies = []
         self.collisions = []
         if exp_type in ['l', 'd']:
@@ -162,7 +170,8 @@ class Escapes:
         self.ba_in_timeframe = []
         self.h_vs_b_by_trial = []
         self.initial_conditions = []
-        self.load_experiment()
+        if sub_class == ():
+            self.load_experiment()
 
     # this function simply plots the heading angle vs. the barrier angle
     # over time. the barrier angle runs from the fish's center of mass
@@ -240,8 +249,12 @@ class Escapes:
             steady_state_resting = np.mean(second_half[140:160])
             indices_greater_than_ss = [i for i, j in enumerate(second_half)
                                        if j > steady_state_resting]
-            first_cross = indices_greater_than_ss[0]
-            zero_first_half = first_half.index(0)
+            try:
+                first_cross = indices_greater_than_ss[0]
+                zero_first_half = first_half.index(0)
+            except IndexError:
+                stim_times.append(np.nan)
+                continue
 #            print first_cross
 #            print zero_first_half
             #raw image really does hit absolute zero as a mean. that's incredible. 
@@ -252,19 +265,23 @@ class Escapes:
                 pl.plot(second_half)
                 pl.show()
         for x in stim_times:
-            if x > self.timerange[0] and x < self.timerange[1]:
-                self.stim_init_times.append(x-self.timerange[0])
-            else:
+            if math.isnan(x) or x < self.timerange[0] or x > self.timerange[1]:
                 self.stim_init_times.append(self.pre_c)
-                self.stim_times_accurate = False
+                self.stim_times_accurate.append(0)
+            else:
+                self.stim_init_times.append(x-self.timerange[0])
+                self.stim_times_accurate.append(1)
+
         
 
 # finds which barrier in the barrier file the fish is escaping from
 # using vector distance.
 
-        
     def get_correct_barrier(self):
         for coords in self.xy_coords_by_trial:
+            if coords[0] == []:
+                self.barrier_xy_by_trial.append([])
+                continue
             mag_distance = []
             init_x = coords[0][self.timerange[0]]
             init_y = coords[1][self.timerange[0]]
@@ -292,7 +309,10 @@ class Escapes:
             else:
                 return False
             
-        for trialnum in range(len(self.xy_coords_by_trial)):
+        for trialnum, xyc in enumerate(self.xy_coords_by_trial):
+            if xyc[0] == []:
+                self.collisions.append(np.nan)
+                continue
             barrier_x = self.barrier_xy_by_trial[trialnum][0]
             barrier_y = self.barrier_xy_by_trial[trialnum][1]
             barrier_diameter = self.barrier_diam
@@ -346,6 +366,10 @@ class Escapes:
     def get_orientation(self, makevid):
         for trial, (vid_file, xy) in enumerate(
                 zip(self.movie_id, self.xy_coords_by_trial)):
+            if xy[0] == []:
+                self.ha_in_timeframe.append([])
+                self.contours_by_trial.append([])
+                continue
             heading_vec_list = []
             contour_list = []
             fps = 500
@@ -444,6 +468,9 @@ class Escapes:
 
     def vec_to_barrier(self):
         for trial, xy in enumerate(self.xy_coords_by_trial):
+            if xy[0] == []:
+                self.ba_in_timeframe.append([])
+                continue
             vecs_to_barrier = []
             x = xy[0][self.timerange[0]:self.timerange[1]]
             y = xy[1][self.timerange[0]:self.timerange[1]]
@@ -465,6 +492,9 @@ class Escapes:
     def heading_v_barrier(self):
         for h_angles, b_angles in zip(self.ha_in_timeframe,
                                       self.ba_in_timeframe):
+            if h_angles == []:
+                self.h_vs_b_by_trial.append([])
+                continue
             diffs = []
             right_or_left = []
             for ha, ba in zip(h_angles, b_angles):
@@ -504,7 +534,10 @@ class Escapes:
 # for finding heading to the barrier and the cstart
 
     def find_initial_conditions(self):
-        for trial in range(len(self.xy_coords_by_trial)):
+        for trial, xyc in enumerate(self.xy_coords_by_trial):
+            if xyc[0] == []:
+                self.initial_conditions.append([])
+                continue
             ha_avg = np.nanmean(self.ha_in_timeframe[trial][0:self.pre_c])
             ba_avg = np.nanmean(self.ba_in_timeframe[trial][0:self.pre_c])
             h_to_b = np.nanmean(self.h_vs_b_by_trial[trial][0:self.pre_c])
@@ -543,10 +576,11 @@ class Escapes:
         timerange = self.timerange
         barrier_on_left = []
         barrier_on_right = []
-        for trial in range(len(self.xy_coords_by_trial)):
+        for trial, xy_coords in enumerate(self.xy_coords_by_trial):
+            if xy_coords == []:
+                continue
             to_barrier_init = self.initial_conditions[trial][0]
             ha_init = self.initial_conditions[trial][2]
-            xy_coords = self.xy_coords_by_trial[trial]
             if not math.isnan(ha_init):
                 zipped_coords = zip(xy_coords[0], xy_coords[1])
                 escape_coords = rotate_coords(zipped_coords, -ha_init)
@@ -592,7 +626,12 @@ class Escapes:
 # tail and the index where the c-start begins.
         
     def find_cstart(self, plotornot):
-        for trial in range(len(self.xy_coords_by_trial)):
+        for trial, xyc in enumerate(self.xy_coords_by_trial):
+            if xyc[0] == [] or not self.stim_times_accurate[trial]:
+                self.cstart_rel_to_barrier.append(np.nan)
+                self.cstart_angles.append(np.nan)
+                self.escape_latencies.append(np.nan)
+                continue
             tail_kern = Gaussian1DKernel(1)
             stim_init = self.stim_init_times[trial]
             c_thresh = 30
@@ -702,7 +741,11 @@ class Escapes:
 
         fourcc = cv2.VideoWriter_fourcc('M', 'J', 'P', 'G')
         fps = 500
-        for trial in range(len(self.xy_coords_by_trial)):
+        for trial, xyc in enumerate(self.xy_coords_by_trial):
+            if xyc[0] == []:
+                self.tailangle_sums.append([])
+                self.all_tailangles.append([])
+                continue
             cstart_vid = cv2.VideoWriter(
                 self.directory + '/cstart' + str(
                     trial) + self.condition + '.AVI',
@@ -897,7 +940,10 @@ def outlier_filter(xcoords, ycoords, missed_inds):
             new_y.append(new_y[-1])
             xcoords = new_x + xcoords[i+2:]
             ycoords = new_y + ycoords[i+2:]
-            return outlier_filter(xcoords, ycoords, missed_inds)
+            try:
+                return outlier_filter(xcoords, ycoords, missed_inds)
+            except RuntimeError:
+                return [], [], []
     return new_x, new_y, missed_inds
 
 
@@ -971,9 +1017,9 @@ def magvector(vec):
     return mag
 
 
-def plot_all_results(cond_collector_list):
+def plot_all_results(cond_collector_list, cond_list_orig):
     cond_list = [c.condition for c in cond_collector_list]
-    if cond_list != ['l', 'd', 'n']:
+    if cond_list != cond_list_orig:
         raise Exception('cond_collector in wrong order')
     cpal = sb.color_palette()
     fig, axes = pl.subplots(1, 1)
@@ -1042,6 +1088,30 @@ def plot_all_results(cond_collector_list):
     pl.tight_layout()
     pl.show()
 
+    
+def parse_obj_by_trial(drct_list, cond, mods):
+    os.chdir('/Users/nightcrawler2/Escape-Analysis/')
+    for drct in drct_list:
+        fish_id = '/' + drct
+        pl.ioff()
+        area_thresh = 47
+        esc_dir = os.getcwd() + fish_id
+        print esc_dir
+        plotcstarts = False
+        escape_obj = Escapes(cond, esc_dir, area_thresh, 1)
+        escape_obj.exporter()
+        for i in range(mods):
+            esc = copy.deepcopy(escape_obj)
+            esc.backgrounds = esc.backgrounds[i::mods]
+            esc.pre_escape = esc.pre_escape[i::mods]
+            esc.xy_escapes = esc.xy_escapes[i::mods]
+            esc.stim_data = esc.stim_data[i::mods]
+            esc.movie_id = esc.movie_id[i::mods]
+            esc.numgrayframes = esc.numgrayframes[i:mods]
+            esc.condition = escape_obj.condition + str(i)
+            esc.load_experiment()
+            esc.trial_analyzer(plotcstarts)
+            esc.exporter()
 
 
 def experiment_collector(drct_list, cond_list, *new_exps):
@@ -1090,11 +1160,11 @@ def experiment_collector(drct_list, cond_list, *new_exps):
             pass
 
     final_collectors = [cond_collector_1, cond_collector_2, cond_collector_3]
-    plot_all_results(final_collectors)
+    plot_all_results(final_collectors, cond_list)
     return final_collectors
 
     
-    
+
 if __name__ == '__main__':
 
     # hd = experiment_collector(['030519_1', '030519_2',
@@ -1102,11 +1172,13 @@ if __name__ == '__main__':
     #                           ['030519_1', '030519_2',
     #                            '030719_1', '030719_2', '030719_3'])
 
-    hd = experiment_collector(['030519_1', '030519_2',
-                               '030719_1', '030719_2', '030719_3'])
-    
-    
+    all_dist_list = ['043019_2', '050219_3']
+    parse_obj_by_trial(all_dist_list, 'l', 3)
+    hd = experiment_collector(all_dist_list, ['l0', 'l1', 'l2'])
 
+
+
+    
     # escape_cond2 = Escapes('d', esc_dir, area_thresh)
     # escape_cond2.trial_analyzer(plotcstarts)
     # escape_cond2.escapes_vs_barrierloc()
