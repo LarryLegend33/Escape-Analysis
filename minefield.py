@@ -45,19 +45,21 @@ class Condition_Collector:
                             'Time Per Center Entry': [],
                             'Barrier On Left Trajectories': [],
                             'Barrier On Right Trajectories': []}
+        self.timerange = []
 
     def update_ddict(self, escape_obj):
         if escape_obj.condition != self.condition:
             raise Exception('input condition mistmatch with class')
         else:
-            last_x = [c[0][self.escape_data.timeframe[1]]
-                      for c in self.escape_data.xy_coords_by_trial]
-            last_y = [c[1][self.escape_data.timeframe[1]]
-                      for c in self.escape_data.xy_coords_by_trial]
+            self.timerange = escape_obj.timerange
+            last_x = [c[0][escape_obj.timerange[1]]
+                      for c in escape_obj.xy_coords_by_trial]
+            last_y = [c[1][escape_obj.timerange[1]]
+                      for c in escape_obj.xy_coords_by_trial]
             last_xy = zip(last_x, last_y)
             self.escape_data['Distance From Barrier After Escape'].append(
-                [magvector(xyl[0] - bxy[0], xyl[1] - bxy[1]) for
-                 xyl, bxy in zip(last_xy, self.barrier_xy_by_trial)])
+                [magvector([xyl[0] - bxy[0], xyl[1] - bxy[1]]) for
+                 xyl, bxy in zip(last_xy, escape_obj.barrier_xy_by_trial)])
             self.escape_data['Heading vs Barrier'] += escape_obj.h_vs_b_plot(0)
             br, bl = escape_obj.escapes_vs_barrierloc(1)
             self.escape_data['Barrier On Left Trajectories'] += bl
@@ -1021,9 +1023,12 @@ def plot_all_results(cond_collector_list, cond_list_orig):
     cond_list = [c.condition for c in cond_collector_list]
     if cond_list != cond_list_orig:
         raise Exception('cond_collector in wrong order')
+    esc_assess_time = (cond_collector_list[
+        0].timerange[1] - cond_collector_list[0].timerange[0]) / 2
     cpal = sb.color_palette()
-    fig, axes = pl.subplots(1, 1)
-    axes.set_title('Fish Orientation vs. Barrier (rad)')
+    fig, axes = pl.subplots(1, 2)
+    axes[0].set_title('Fish Orientation vs. Barrier (rad)')
+    axes[1].set_title('Distance from Barrier at Escape Termination')
     fig2, axes2 = pl.subplots(1, 3, sharex=True, sharey=True)
     axes2[0].set_xlim([-100, 100])
     axes2[0].set_ylim([-100, 100])
@@ -1033,25 +1038,46 @@ def plot_all_results(cond_collector_list, cond_list_orig):
     axes2[0].set_aspect('equal')
     axes2[1].set_aspect('equal')
     axes2[2].set_aspect('equal')
-    axes2[0].set_title('Barrier: Lights On')
-    axes2[1].set_title('Barrier: Lights Off')
-    axes2[2].set_title('No Barrier')
+    axes2[0].set_title(cond_list[0])
+    axes2[1].set_title(cond_list[1])
+    axes2[2].set_title(cond_list[2])
     cond_data_arrays = []
     for cond_ind, cond_data_as_list in enumerate(cond_collector_list):
         cond_data = cond_data_as_list.convert_to_nparrays()
         cond_data_arrays.append(cond_data)
         sb.tsplot(np.array(cond_data['Heading vs Barrier']),
-                  ax=axes, estimator=np.nanmean, color=cpal[cond_ind])
+                  ax=axes[0], estimator=np.nanmean, color=cpal[cond_ind])
+
+        # here add a counter and ask whether r_coords[0] or l_coords[0] are pos or neg.
+        correct_moves = 0
+        incorrect_moves = 0
         for r_coords, l_coords in izip_longest(
                 cond_data['Barrier On Left Trajectories'],
                 cond_data['Barrier On Right Trajectories']):
                 if r_coords is not None:
                     axes2[cond_ind].plot(r_coords[0], r_coords[1],
                                          color=np.array(cpal[cond_ind]) * .5)
+                    if np.mean(r_coords[0]) < 0:
+                        correct_moves += 1
+                    else:
+                        incorrect_moves += 1
                 if l_coords is not None:
                     axes2[cond_ind].plot(l_coords[0], l_coords[1],
                                          color=cpal[cond_ind] * 1 / np.max(
                                              cpal[cond_ind]))
+                    if np.mean(l_coords[0]) > 0:
+                        correct_moves += 1
+                    else:
+                        incorrect_moves += 1
+
+        axes2[cond_ind].text(
+            -95, -80,
+            str(correct_moves) + ' Correct', size=10)
+        axes2[cond_ind].text(
+            -95, -95,
+            str(incorrect_moves) + ' Incorrect', size=10)
+       
+                        
 
     pl.tight_layout()
     barfig, barax = pl.subplots(2, 3, figsize=(8, 6))
@@ -1061,13 +1087,18 @@ def plot_all_results(cond_collector_list, cond_list_orig):
     barax[0, 2].set_title('CStart Angle (deg)')
     barax[1, 1].set_title('Probability of Tap Per Arena Entry')
     barax[1, 2].set_title('Time Spent in Barrier Zone')
-    sb.barplot(data=[cdir[~np.isnan(cdir)] for
-                     cdir in [c['Correct CStart Percentage']
-                              for c in cond_data_arrays]],
+    sb.violinplot(data=[np.concatenate(bdist, axis=0) for bdist 
+                        in [c['Distance From Barrier After Escape']
+                        for c in cond_data_arrays]],  ax=axes[1])
+    cstart_percentage_data = [cdir[~np.isnan(cdir)] for
+                              cdir in [c['Correct CStart Percentage']
+                              for c in cond_data_arrays]]
+    sb.barplot(data=cstart_percentage_data, 
                ax=barax[0, 0], estimator=np.nanmean)
-    sb.barplot(data=[clp[~np.isnan(clp)] for
-                     clp in [c['Collision Percentage']
-                             for c in cond_data_arrays]],
+    collision_percentage_data = [clp[~np.isnan(clp)] for
+                                 clp in [c['Collision Percentage']
+                                         for c in cond_data_arrays]]
+    sb.barplot(data=collision_percentage_data, 
                ax=barax[1, 0], estimator=np.nanmean)
     sb.boxplot(data=[2*clat[~np.isnan(clat)] for
                      clat in [c['CStart Latency']
@@ -1077,10 +1108,13 @@ def plot_all_results(cond_collector_list, cond_list_orig):
                      cang in [c['CStart Angle']
                               for c in cond_data_arrays]],
                ax=barax[0, 2])
-    sb.boxplot(data=[num_entries[~np.isnan(num_entries)] for
-                     num_entries in [c['Taps Per Entry Into Arena']
-                                     for c in cond_data_arrays]],
+
+    taps_per_entry = [num_entries[~np.isnan(num_entries)] for
+                      num_entries in [c['Taps Per Entry Into Arena']
+                                      for c in cond_data_arrays]]
+    sb.boxplot(data=taps_per_entry,
                ax=barax[1, 1])
+    
     sb.boxplot(data=[dur[~np.isnan(dur)] for
                      dur in [c['Time Per Center Entry']
                              for c in cond_data_arrays]],
@@ -1172,7 +1206,7 @@ if __name__ == '__main__':
     #                           ['030519_1', '030519_2',
     #                            '030719_1', '030719_2', '030719_3'])
 
-    all_dist_list = ['043019_2', '050219_3']
+    all_dist_list = ['043019_2', '050219_3', '050219_4']
     parse_obj_by_trial(all_dist_list, 'l', 3)
     hd = experiment_collector(all_dist_list, ['l0', 'l1', 'l2'])
 
