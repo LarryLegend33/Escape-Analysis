@@ -248,20 +248,23 @@ class Escapes:
             stimdata = np.genfromtxt(stim_file)
             first_half = [np.mean(a[0:50]) for a in partition(100, stimdata)]
             second_half = [np.mean(a[50:]) for a in partition(100, stimdata)]
-            steady_state_resting = np.mean(second_half[140:160])
-            indices_greater_than_ss = [i for i, j in enumerate(second_half)
-                                       if j > steady_state_resting]
+
+            # 140th to the 160th frame. 
+
+            steady_state_resting_1sthalf = np.mean(first_half[140:160])            
+            steady_state_resting_2ndhalf = np.mean(second_half[140:160])
+            indices_less_than_ss1 = [i for i, j in enumerate(first_half)
+                                     if j < steady_state_resting_1sthalf]
+            indices_greater_than_ss2 = [i for i, j in enumerate(second_half)
+                                        if j > steady_state_resting_2ndhalf]
             try:
-                first_cross = indices_greater_than_ss[0]
-                zero_first_half = first_half.index(0)
+                max_second_half = indices_greater_than_ss2[0]
+                zero_first_half = indices_less_than_ss1[0]
             except IndexError:
                 stim_times.append(np.nan)
                 continue
-#            print first_cross
-#            print zero_first_half
-            #raw image really does hit absolute zero as a mean. that's incredible. 
             stim_times.append(
-                np.ceil(np.median([first_cross, zero_first_half])))
+                np.ceil(np.median([max_second_half, zero_first_half])))
             if plot_stim:
                 pl.plot(first_half)
                 pl.plot(second_half)
@@ -1159,7 +1162,7 @@ def experiment_collector(drct_list, cond_list, *new_exps):
                 escape_obj.trial_analyzer(plotcstarts)
                 escape_obj.exporter()
             except IOError:
-                print("No " + cond + " Trials")
+                print("No " + cond + " Trials in fish" + str(esc_dir))
 # CATCH FOR SPLITTING ACCORDING TO TRIAL GOES HERE. 
             
     for drct in drct_list:
