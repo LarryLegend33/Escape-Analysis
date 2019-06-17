@@ -423,24 +423,17 @@ class Escapes:
                 fish_xy_moments = cv2.moments(fishcont)
                 fish_com_x = int(fish_xy_moments['m10']/fish_xy_moments['m00'])
                 fish_com_y = int(fish_xy_moments['m01']/fish_xy_moments['m00'])
-                mask = np.ones(im.shape, dtype=np.uint8)
-                winsize = 3
-                for i in range(fish_com_y - winsize, fish_com_y + winsize):
-                    for j in range(fish_com_x - winsize, fish_com_x + winsize):
-                        mask[i, j] = 0
-                cv2.multiply(brsub, mask, brsub)
-#                eyes_x, eyes_y = find_darkest_pixel(brsub)
-                eyes_x, eyes_y = copy.deepcopy([fish_com_x, fish_com_y])
-                fishcont_avg = np.mean(fishcont, axis=0)[0].astype(np.int)
-                fish_com_x = fishcont_avg[0]
-                fish_com_y = fishcont_avg[1]
-                cv2.circle(im_color, (eyes_x, eyes_y), 1, (255, 0, 0), 1)
+                fishcont_middle = np.mean(fishcont, axis=0)[0].astype(np.int)
+                fish_middle_x = fishcont_middle[0]
+                fish_middle_y = fishcont_middle[1]
+                cv2.circle(im_color, (fish_com_x, fish_com_y), 1, (255, 0, 0), 1)
     # com actually comes out red, mid blue
                 cv2.circle(im_color,
-                           (fish_com_x, fish_com_y), 1, (0, 0, 255), 1)
+                           (fish_middle_x, fish_middle_y), 1, (0, 0, 255), 1)
                 cv2.drawContours(im_color, [fishcont], -1, (0, 255, 0), 1)
                 vec_heading = np.array(
-                    [eyes_x, eyes_y]) - np.array([fish_com_x, fish_com_y])
+                    [fish_com_x, fish_com_y]) - np.array([fish_middle_x,
+                                                          fish_middle_y])
                 heading_vec_list.append(vec_heading)
                 if makevid:
                     ha_vid.write(im_color)
@@ -1019,10 +1012,10 @@ def magvector(vec):
     return mag
 
 
-def plot_all_results(cond_collector_list, cond_list_orig):
+def plot_all_results(cond_collector_list):
     cond_list = [c.condition for c in cond_collector_list]
-    if cond_list != cond_list_orig:
-        raise Exception('cond_collector in wrong order')
+    # if cond_list != cond_list_orig:
+    #     raise Exception('cond_collector in wrong order')
     esc_assess_time = (cond_collector_list[
         0].timerange[1] - cond_collector_list[0].timerange[0]) / 2
     cpal = sb.color_palette()
@@ -1149,9 +1142,7 @@ def parse_obj_by_trial(drct_list, cond, mods):
 
 
 def experiment_collector(drct_list, cond_list, *new_exps):
-    cond_collector_1 = Condition_Collector(cond_list[0])
-    cond_collector_2 = Condition_Collector(cond_list[1])
-    cond_collector_3 = Condition_Collector(cond_list[2])
+    cond_collector_list = [Condition_Collector(cl) for cl in cond_list]
     if new_exps != ():
         new_exps = new_exps[0]
     os.chdir('/Users/nightcrawler2/Escape-Analysis/')
@@ -1172,31 +1163,19 @@ def experiment_collector(drct_list, cond_list, *new_exps):
 # CATCH FOR SPLITTING ACCORDING TO TRIAL GOES HERE. 
             
     for drct in drct_list:
-        try:
-            print('loading cond1 trials')
-            esc_1 = pickle.load(open(
-                drct + '/escapes_' + cond_list[0] + '.pkl', 'rb'))
-            cond_collector_1.update_ddict(esc_1)
-        except IOError:
-            pass
-        try:
-            print('loading cond2 trials')
-            esc_2 = pickle.load(open(
-                drct + '/escapes_' + cond_list[1] + '.pkl', 'rb'))
-            cond_collector_2.update_ddict(esc_2)
-        except IOError:
-            pass
-        try:
-            esc_3 = pickle.load(open(
-                drct + '/escapes_' + cond_list[2] + '.pkl', 'rb'))
-            cond_collector_3.update_ddict(esc_3)
-        except IOError:
-            pass
 
-    final_collectors = [cond_collector_1, cond_collector_2, cond_collector_3]
-    plot_all_results(final_collectors, cond_list)
-    return final_collectors
+        for cond_ind, cond_collector in enumerate(cond_collector_list):
+            try:
+                print('loading cond ' + str(cond_ind+1) + ' trials')
+                esc_obj = pickle.load(open(
+                    drct + '/escapes_' + cond_list[cond_ind] + '.pkl', 'rb'))
+                cond_collector.update_ddict(esc_obj)
+            except IOError:
+                pass
+    return cond_collector_list
 
+
+# SIMPLY CALL EXPERIMENT_COLLECTOR ON TWO SEPARATE DRCT_LISTS AND THEN + THEM, PUT INTO PLOT_ALL
     
 
 if __name__ == '__main__':
@@ -1208,9 +1187,25 @@ if __name__ == '__main__':
 
     all_dist_list = ['043019_2', '050219_3', '050219_4']
     parse_obj_by_trial(all_dist_list, 'l', 3)
-    hd = experiment_collector(all_dist_list, ['l0', 'l1', 'l2'])
+#    hd = experiment_collector(all_dist_list, ['l0', 'l1', 'l2'])
+
+    # FOR 54 SMALL VS 108 BIG
+    # have to write an experiment collector call for each list you want
+    # i.e. ec1 = experiment_collector(drct_list1, conds)
+    #       ec2 = experiment_collector(drct_list2, conds)
+    #       hd_both = ec1 + ec2
+    #       plot_all_results(ec1 + ec2)
+
+    # FOR 54 vs 108 BIG
+    # drct_list = [alldrcts]
+    # parse_obj_by_trial(alldrcts, 'l', 2)
+    # ec = experiment_collector(alldrcts, ['l0', 'l1'])
+    #plot_all_results(ec)
+
+    
 
 
+    
 
     
     # escape_cond2 = Escapes('d', esc_dir, area_thresh)
