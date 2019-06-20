@@ -195,7 +195,7 @@ class Escapes:
         self.get_xy_coords()
         self.load_barrier_info()
         self.get_correct_barrier()
-        self.get_stim_times(False)
+        self.get_stim_times(True)
 
     def exporter(self):
         with open(self.directory + '/escapes_' +
@@ -248,23 +248,27 @@ class Escapes:
             stimdata = np.genfromtxt(stim_file)
             first_half = [np.mean(a[0:50]) for a in partition(100, stimdata)]
             second_half = [np.mean(a[50:]) for a in partition(100, stimdata)]
-
             # 140th to the 160th frame. 
-
-            steady_state_resting_1sthalf = np.mean(first_half[140:160])            
+#            steady_state_resting_1sthalf = np.mean(first_half[140:160])            
             steady_state_resting_2ndhalf = np.mean(second_half[140:160])
-            indices_less_than_ss1 = [i for i, j in enumerate(first_half)
-                                     if j < steady_state_resting_1sthalf]
+            # indices_less_than_ss1 = [i for i, j in enumerate(first_half)
+            #                          if j < steady_state_resting_1sthalf]
             indices_greater_than_ss2 = [i for i, j in enumerate(second_half)
-                                        if j > steady_state_resting_2ndhalf]
+                                        if j >= steady_state_resting_2ndhalf]
+
             try:
                 max_second_half = indices_greater_than_ss2[0]
-                zero_first_half = indices_less_than_ss1[0]
+ #               zero_first_half = indices_less_than_ss1[0]
+                print("STIM TIMES")
+                print max_second_half
+#                print zero_first_half
+                
             except IndexError:
                 stim_times.append(np.nan)
                 continue
-            stim_times.append(
-                np.ceil(np.median([max_second_half, zero_first_half])))
+            # stim_times.append(
+            #     np.ceil(np.median([max_second_half, zero_first_half])))
+            stim_times.append(max_second_half)
             if plot_stim:
                 pl.plot(first_half)
                 pl.plot(second_half)
