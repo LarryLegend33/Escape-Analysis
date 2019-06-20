@@ -243,42 +243,23 @@ class Escapes:
 # The steady state should be taken around 50 frames into the stimulus.
             
     def get_stim_times(self, plot_stim):
-        stim_times = []
         for stim_file in self.stim_data:
             stimdata = np.genfromtxt(stim_file)
-            first_half = [np.mean(a[0:50]) for a in partition(100, stimdata)]
-            second_half = [np.mean(a[50:]) for a in partition(100, stimdata)]
-            # 140th to the 160th frame. 
-#            steady_state_resting_1sthalf = np.mean(first_half[140:160])            
-            steady_state_resting_2ndhalf = np.mean(second_half[140:160])
-            # indices_less_than_ss1 = [i for i, j in enumerate(first_half)
-            #                          if j < steady_state_resting_1sthalf]
-            indices_greater_than_ss2 = [i for i, j in enumerate(second_half)
-                                        if j >= steady_state_resting_2ndhalf]
-
-            try:
-                max_second_half = indices_greater_than_ss2[0]
- #               zero_first_half = indices_less_than_ss1[0]
-                print("STIM TIMES")
-                print max_second_half
-#                print zero_first_half
-                
-            except IndexError:
-                stim_times.append(np.nan)
-                continue
-            # stim_times.append(
-            #     np.ceil(np.median([max_second_half, zero_first_half])))
-            stim_times.append(max_second_half)
+            light_profile = [np.sum(np.array(a) * np.arange(100)) for a in partition(100, stimdata)]
+            std_light_profile = gaussian_filter([np.std(lp) for lp in sliding_window(5, light_profile)], 1)
+            std_max = argrelmax(std_light_profile)[0]
+            stim_init = [stdm for stdm, stdlp in zip(
+                std_max, std_light_profile[std_max]) if stdlp > 10000]
+            stim_init = [st for st in stim_init if (
+                self.timerange[0] < st < self.timerange[1])]
             if plot_stim:
-                pl.plot(first_half)
-                pl.plot(second_half)
+                pl.plot(std_light_profile)
                 pl.show()
-        for x in stim_times:
-            if math.isnan(x) or x < self.timerange[0] or x > self.timerange[1]:
+            if not stim_init:
                 self.stim_init_times.append(self.pre_c)
                 self.stim_times_accurate.append(0)
             else:
-                self.stim_init_times.append(x-self.timerange[0])
+                self.stim_init_times.append(stim_init[0]-self.timerange[0])
                 self.stim_times_accurate.append(1)
 
         
