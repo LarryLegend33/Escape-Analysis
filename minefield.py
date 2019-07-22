@@ -69,9 +69,9 @@ class Condition_Collector:
             self.escape_data['Correct CStart Percentage'].append(np.sum(
                 non_nan_cstarts) / float(
                     len(non_nan_cstarts)))
-            if np.array(escape_obj.stim_times_accurate).all():
-                self.escape_data[
-                    'CStart Latency'] += escape_obj.escape_latencies
+            self.escape_data[
+                'CStart Latency'] += np.array(escape_obj)[
+                    escape_obj.stim_times_accurate].tolist()
             self.escape_data['CStart Angle'] += escape_obj.cstart_angles
             if len(escape_obj.numgrayframes) != 0:
                 self.escape_data['Taps Per Entry Into Arena'].append(
@@ -288,7 +288,7 @@ class Escapes:
 # are 2 (allowing 1 for noise) its a collision
 
     def collision_course(self, *plot):
-
+        self.collisions = []
         def collision(xb, yb, bd, x, y):
             proximity_val = 5
             vec = np.sqrt((x - xb)**2 + (y - yb)**2)
@@ -1010,18 +1010,13 @@ def plot_all_results(cond_collector_list):
     fig, axes = pl.subplots(1, 2)
     axes[0].set_title('Fish Orientation vs. Barrier (rad)')
     axes[1].set_title('Distance from Barrier at Escape Termination')
-    fig2, axes2 = pl.subplots(1, 3, sharex=True, sharey=True)
-    axes2[0].set_xlim([-100, 100])
-    axes2[0].set_ylim([-100, 100])
-    axes2[0].vlines(0, -100, 100, colors=(.8, .8, .8), linestyles='dashed')
-    axes2[1].vlines(0, -100, 100, colors=(.8, .8, .8), linestyles='dashed')
-    axes2[2].vlines(0, -100, 100, colors=(.8, .8, .8), linestyles='dashed')
-    axes2[0].set_aspect('equal')
-    axes2[1].set_aspect('equal')
-    axes2[2].set_aspect('equal')
-    axes2[0].set_title(cond_list[0])
-    axes2[1].set_title(cond_list[1])
-    axes2[2].set_title(cond_list[2])
+    fig2, axes2 = pl.subplots(1, len(cond_list), sharex=True, sharey=True)
+    for i in range(len(cond_list)):
+        axes2[i].set_xlim([-100, 100])
+        axes2[i].set_ylim([-100, 100])
+        axes2[i].vlines(0, -100, 100, colors=(.8, .8, .8), linestyles='dashed')
+        axes2[i].set_aspect('equal')
+        axes2[i].set_title(cond_list[i])
     cond_data_arrays = []
     for cond_ind, cond_data_as_list in enumerate(cond_collector_list):
         cond_data = cond_data_as_list.convert_to_nparrays()
@@ -1057,8 +1052,6 @@ def plot_all_results(cond_collector_list):
         axes2[cond_ind].text(
             -95, -95,
             str(incorrect_moves) + ' Incorrect', size=10)
-       
-                        
 
     pl.tight_layout()
     barfig, barax = pl.subplots(2, 3, figsize=(8, 6))
