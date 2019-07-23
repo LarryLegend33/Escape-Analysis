@@ -184,7 +184,17 @@ class Escapes:
     def h_vs_b_plot(self, plot_fish):
         # h_vs_b_mod = [np.mod(
         #     hb_trial, 2*np.pi) for hb_trial in self.h_vs_b_by_trial]
-        h_vs_b_mod = [np.abs(hb_trial) for hb_trial in self.h_vs_b_by_trial]
+
+
+# if hb_trial[0] is negative, meaning barrier is on left, multiply the trial by -1?
+# currently the h_vs_b is on a -180 to 180 scale with 0 as barrier directly in front, negatives on the left.
+# abs does do the trick of seeing if the absolute angle grows, but misses crossings (i.e. -60 to 80 would be the same as -60 to -80, which is a
+# much lower amplitude turn. TRY:
+        
+        h_vs_b_mod = [np.array(hb_trial) if hb_trial[0] > 0 else -1*np.array(
+            hb_trial) for hb_trial in self.h_vs_b_by_trial]
+        
+#        h_vs_b_mod = [np.abs(hb_trial) for hb_trial in self.h_vs_b_by_trial]
         if plot_fish:
             sb.tsplot(h_vs_b_mod)
             pl.show()
