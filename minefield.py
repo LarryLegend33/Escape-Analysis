@@ -126,17 +126,30 @@ class Escapes:
         if exp_type in ['l', 'd']:
             bstruct_and_br_label = 'b'
         elif exp_type in ['v', 'i']:
+            self.numgrayframes = []
             bstruct_and_br_label = 'v'
-        else:
-            bstruct_and_br_label = exp_type
-        self.barrier_file = np.loadtxt(
-            directory + '/barrierstruct_' + bstruct_and_br_label + '.txt',
-            dtype='string')
+
         if exp_type == 'n':
-            self.numgrayframes = np.loadtxt(
-                directory + '/numframesgray_' + exp_type + '.txt',
-                dtype='string').astype(np.int)
-        elif exp_type == 'l':
+            try:
+                self.numgrayframes = np.loadtxt(
+                    directory + '/numframesgray_n.txt',
+                    dtype='string').astype(np.int)
+                self.barrier_file = np.loadtxt(
+                    directory + '/barrierstruct_n.txt',
+                    dtype='string')
+            # Will throw IO error for n trials in virtual settings
+            except IOError:
+                self.numgrayframes = []
+                self.barrier_file = np.loadtxt(
+                    directory + '/barrierstruct_v.txt',
+                    dtype='string')
+
+        else:
+            self.barrier_file = np.loadtxt(
+                directory + '/barrierstruct_' + bstruct_and_br_label + '.txt',
+                dtype='string')
+
+        if exp_type == 'l':
             self.numgrayframes = np.loadtxt(
                 directory + '/numframesgray_' + bstruct_and_br_label + '.txt',
                 dtype='string').astype(np.int)
@@ -144,24 +157,22 @@ class Escapes:
             self.numgrayframes = np.loadtxt(
                 directory + '/numframesgray_dark.txt',
                 dtype='string').astype(np.int)
-        else:
-            self.numgrayframes = []
-        try:
-            self.numgrayframes = self.numgrayframes.tolist()
-        except AttributeError:
-            pass
+            
         self.barrier_coordinates = []
         self.barrier_diam = 0
         self.barrier_xy_by_trial = []
         print self.directory
-        background_files = sorted([directory + '/' + f_id
-                                   for f_id in os.listdir(directory)
-                                   if f_id[0:10] == 'background'
-                                   and f_id[-5:-4] == exp_type])
-        back_color_files = [cv2.imread(fil) for fil in background_files]
-        self.backgrounds = [cv2.cvtColor(back_color,
+        background_files = sorted(
+            [(directory + '/' + f_id, int(f_id[11:13]), f_id[-5:-4])
+             for f_id in os.listdir(directory)
+             if (f_id[0:10] == 'background' and f_id[12] != '.')])
+        back_color_images = [cv2.imread(fil[0]) for fil in background_files]
+        backgrounds_gray = [cv2.cvtColor(back_color,
                                          cv2.COLOR_BGR2GRAY)
-                            for back_color in back_color_files]
+                            for back_color in back_color_images]
+
+        self.backgrounds = [(bg, bf[1], bf[2]) for bg, bf in zip(
+            backgrounds_gray, background_files)]
         pre_escape_files = sorted([directory + '/' + f_id
                                    for f_id in os.listdir(directory)
                                    if f_id[0:15] == 'fishcoords_gray'
@@ -321,7 +332,9 @@ class Escapes:
 # are 2 (allowing 1 for noise) its a collision
 
     def collision_course(self, *plot):
+        
         self.collisions = []
+        
         def collision(xb, yb, bd, x, y):
             proximity_val = 5
             vec = np.sqrt((x - xb)**2 + (y - yb)**2)
@@ -386,6 +399,18 @@ class Escapes:
 # extremely accurate vector for orientation which is filtered and
 # converted to an angle.
 
+    def find_correct_background(self, curr_trial):
+        trial_list = np.array([b[1] for b in self.backgrounds])
+        min_value = np.min(np.abs(trial_list-curr_trial))
+        closest_inds = np.where(np.abs(trial_list-curr_trial == min_value))[0]
+        candidate_backgrounds = self.backgrounds[closest_inds[0]:closest_inds[-1]+1]
+        br_conditions = [cb[2] for cb in candidate_backgrounds]
+        if self.condition in br_conditions:
+            return candidate_backgrounds[br_conditions.index(self.condition)][0]
+        else:
+            return candidate_backgrounds[0][0]
+                                
+
     def get_orientation(self, makevid):
         for trial, (vid_file, xy) in enumerate(
                 zip(self.movie_id, self.xy_coords_by_trial)):
@@ -414,12 +439,9 @@ class Escapes:
                 y = 1024 - y
                 im_color = vid.get_data(self.timerange[0] + frame)
                 im = cv2.cvtColor(im_color, cv2.COLOR_BGR2GRAY)
-                try:
-                    background_roi = slice_background(
-                        self.backgrounds[trial], x, y)
-                except IndexError:
-                    background_roi = slice_background(
-                        self.backgrounds[-1], x, y)
+                matched_background = self.find_correct_background(trial)
+                background_roi = slice_background(
+                    matched_background, x, y)
                 brsub = cv2.absdiff(im, background_roi).astype(np.uint8)
                 fishcont, mid_x, mid_y, th = self.contourfinder(brsub, 30)
                 contour_list.append(fishcont)
@@ -1215,6 +1237,7 @@ def plot_all_results(cond_collector_list):
     pl.tight_layout()
     pl.show()
 
+
     
 def parse_obj_by_trial(drct_list, cond, mods):
     os.chdir('/Users/nightcrawler2/Escape-Analysis/')
@@ -1280,11 +1303,18 @@ def experiment_collector(drct_list, cond_list, *new_exps):
 
 if __name__ == '__main__':
 
-    hd = experiment_collector(['030519_1', '030519_2',
-                               '030719_1', '030719_2', '030719_3'], ['l', 'd'],
-                              ['030519_1', '030519_2',
-                               '030719_1', '030719_2', '030719_3'])
+    # hd = experiment_collector(['030519_1', '030519_2',
+    #                            '030719_1', '030719_2', '030719_3'], ['l', 'd'],
+    #                           ['030519_1', '030519_2',
+    #                            '030719_1', '030719_2', '030719_3'])
+    hd = experiment_collector(['091119_4'], ['v', 'i', 'n'], ['091119_4'])
+            
+            
 
+
+
+
+    
 #     all_dist_list = ['043019_2', '050219_3', '050219_4']
 # #    parse_obj_by_trial(all_dist_list, 'l', 3)
 #     hd = experiment_collector(all_dist_list, ['l0', 'l1', 'l2'])
