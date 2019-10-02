@@ -144,7 +144,12 @@ class Escapes:
             self.numgrayframes = np.loadtxt(
                 directory + '/numframesgray_dark.txt',
                 dtype='string').astype(np.int)
-        self.numgrayframes = self.numgrayframes.tolist()
+        else:
+            self.numgrayframes = []
+        try:
+            self.numgrayframes = self.numgrayframes.tolist()
+        except AttributeError:
+            pass
         self.barrier_coordinates = []
         self.barrier_diam = 0
         self.barrier_xy_by_trial = []
