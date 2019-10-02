@@ -40,9 +40,11 @@ class Condition_Collector:
                             'Collision Percentage': [],
                             'CStart Latency': [],
                             'CStart Angle': [],
+                            'Phototaxis to Tap Time': [],
                             'Correct CStart Percentage': [],
+                            'CStart Rel to Prevbout': [], 
                             'Taps Per Entry Into Arena': [],
-                            'Time Per Center Entry': [],
+                            'Total Time In Center': [],
                             'Barrier On Left Trajectories': [],
                             'Barrier On Right Trajectories': []}
         self.timerange = []
@@ -52,6 +54,14 @@ class Condition_Collector:
             raise Exception('input condition mistmatch with class')
         else:
             self.timerange = escape_obj.timerange
+            tap_times = []
+            for gf in escape_obj.pre_escape:
+                try:
+                    num_gfs = len(gf)
+                except TypeError:
+                    num_gfs = 1
+                tap_times.append(num_gfs / 200.0)
+            self.escape_data['Phototaxis to Tap Time'] += tap_times
             last_x = [c[0][escape_obj.timerange[1]]
                       for c in escape_obj.xy_coords_by_trial]
             last_y = [c[1][escape_obj.timerange[1]]
@@ -66,11 +76,16 @@ class Condition_Collector:
             self.escape_data['Barrier On Right Trajectories'] += br
             non_nan_cstarts = [cs for cs in escape_obj.cstart_rel_to_barrier
                                if not math.isnan(cs)]
+            non_nan_cstart_rel_to_prevbout = [cs for cs in escape_obj.cstart_rel_to_last_bout
+                                              if not math.isnan(cs)]
             self.escape_data['Correct CStart Percentage'].append(np.sum(
                 non_nan_cstarts) / float(
                     len(non_nan_cstarts)))
+            self.escape_data['CStart Rel to Prevbout'].append(np.sum(
+                non_nan_cstart_rel_to_prevbout) / float(
+                    len(non_nan_cstart_rel_to_prevbout)))
             self.escape_data[
-                'CStart Latency'] += np.array(escape_obj)[
+                'CStart Latency'] += np.array(escape_obj.stim_init_times)[
                     escape_obj.stim_times_accurate].tolist()
             self.escape_data['CStart Angle'] += escape_obj.cstart_angles
             if len(escape_obj.numgrayframes) != 0:
@@ -78,7 +93,7 @@ class Condition_Collector:
                     len(escape_obj.xy_coords_by_trial) / float(
                         len(escape_obj.numgrayframes)))
                 self.escape_data[
-                    'Time Per Center Entry'] += escape_obj.numgrayframes
+                    'Total Time In Center'] += escape_obj.numgrayframes
             non_nan_collisions = [col for col in escape_obj.collisions
                                   if not math.isnan(col)]
             self.escape_data['Collision Percentage'].append(
@@ -148,6 +163,7 @@ class Escapes:
                                    and f_id[-5:-4] == exp_type])
         self.pre_escape = [
             np.loadtxt(pe, dtype='string') for pe in pre_escape_files]
+        self.pre_escape_bouts = []
         xy_files = sorted([directory + '/' + f_id
                            for f_id in os.listdir(directory)
                            if f_id[0:4] == 'tapr' and f_id[-5:-4] == exp_type])
@@ -163,7 +179,7 @@ class Escapes:
                                     and f_id[0] == 't')])
 
 # Make these dictionaries so you can put in arbitrary trial / value bindings
-
+        self.cstart_rel_to_last_bout = []
         self.cstart_angles = []
         self.cstart_rel_to_barrier = []
         self.all_tailangles = []
@@ -205,7 +221,7 @@ class Escapes:
         self.get_xy_coords()
         self.load_barrier_info()
         self.get_correct_barrier()
-        self.get_stim_times(True)
+        self.get_stim_times(False)
 
     def exporter(self):
         with open(self.directory + '/escapes_' +
@@ -244,6 +260,8 @@ class Escapes:
             self.xy_coords_by_trial.append([xc_trial,
                                             yc_trial])
             self.missed_inds_by_trial.append(missed_inds)
+
+
 
 # There is a 100 pixel wide window surrounding the LED.
 # At first, the LED is in the leftmost 50 pixels. After stim, in rightmost.
@@ -622,11 +640,74 @@ class Escapes:
         for trial, xyc in enumerate(self.xy_coords_by_trial):
             if xyc[0] == [] or not self.stim_times_accurate[trial]:
                 self.cstart_rel_to_barrier.append(np.nan)
+                self.cstart_rel_to_last_bout.append(np.nan)
                 self.cstart_angles.append(np.nan)
                 self.escape_latencies.append(np.nan)
+                self.pre_escape_bouts.append(np.nan)
                 continue
             tail_kern = Gaussian1DKernel(1)
             stim_init = self.stim_init_times[trial]
+            print("Stim Init")
+            pre_xy_file = self.pre_escape[trial]
+            try:
+                pre_xy_file[0]
+            except IndexError:
+                pre_xy_file = [pre_xy_file.tolist()]
+            pre_xcoords = []
+            pre_ycoords = []
+            for coordstring in pre_xy_file[-1000:]:
+                x, y = x_and_y_coord(coordstring)
+                pre_xcoords.append(x)
+                pre_ycoords.append(y)
+            pre_xcoords += self.xy_coords_by_trial[
+                trial][0][0:stim_init+self.timerange[0]:2]
+            pre_ycoords += self.xy_coords_by_trial[
+                trial][1][0:stim_init+self.timerange[0]:2]
+            vel_vector = [np.sqrt(
+               np.dot(
+                   [v2[0]-v1[0], v2[1]-v1[1]],
+                   [v2[0]-v1[0], v2[1]-v1[1]])) for v1, v2 in sliding_window(
+                       2, zip(pre_xcoords, pre_ycoords))]
+            vv_filtered = gaussian_filter(vel_vector, 10)
+            bout_inds = argrelextrema(
+                np.array(vv_filtered), np.greater_equal,  order=5)[0]
+            if len(bout_inds) != 0:
+                bi_thresh = [arg for arg in bout_inds if vv_filtered[arg] > .5]
+                if len(bi_thresh) != 0:
+                    fi = [bi_thresh[0]]
+                else:
+                    fi = []
+                bi_norepeats = fi + [b for a, b in sliding_window(
+                    2, bi_thresh) if b-a > 20]
+                # pl.plot(vv_filtered)
+                # pl.plot(bi_norepeats,
+                #         np.zeros(len(bi_norepeats)), marker='.')
+                # pl.show()
+
+# THESE SEEM KIND OF ARBITRARY RIGHT NOW. BUT TRY IT.
+            bout_init_position = [[np.nanmean(pre_xcoords[bi-40:bi-30]),
+                                   np.nanmean(pre_ycoords[bi-40:bi-30])]
+                                  for bi in bi_norepeats]
+            bout_post_position = [[np.nanmean(pre_xcoords[bi+10:bi+40]),
+                                   np.nanmean(pre_ycoords[bi+10:bi+40])]
+                                  for bi in bi_norepeats]
+            disp_vecs = [[b[0]-a[0], b[1]-a[1]] for a,
+                         b in zip(bout_init_position, bout_post_position)]
+            dots = [np.dot(i, j) / (magvector(i) * magvector(j))
+                    for i, j in sliding_window(2, disp_vecs)]
+            ang = [np.arccos(a) for a in dots]
+            crosses = [np.cross(i, j) for i, j in sliding_window(2, disp_vecs)]
+            bout_angles = []
+            for a, c in zip(ang, crosses):
+                if c < 0:
+                    bout_angles.append(a)
+                else:
+                    bout_angles.append(-1*a)
+            if bout_angles:
+                print bout_angles[-1]
+            self.pre_escape_bouts.append(bout_angles)
+
+            
             c_thresh = 30
             ta = convolve(self.tailangle_sums[trial], tail_kern)
             # avg_curl_init = np.nanmean(ta[0:self.pre_c])
@@ -646,6 +727,7 @@ class Escapes:
                 pl.show()
             if not ta_maxandmin:
                 print('nans to cstart varbs')
+                self.cstart_rel_to_last_bout.append(np.nan)
                 self.cstart_rel_to_barrier.append(np.nan)
                 self.cstart_angles.append(np.nan)
                 self.escape_latencies.append(np.nan)
@@ -667,9 +749,23 @@ class Escapes:
                 else:
                     print('towards')
                     self.cstart_rel_to_barrier.append(0)
+
+                if bout_angles:
+                    if np.sum(np.sign(
+                            [c_start_angle,
+                             bout_angles[-1]])) == 0:
+                        self.cstart_rel_to_last_bout.append(1)
+                    else:
+                        self.cstart_rel_to_last_bout.append(0)
+                else:
+                    self.cstart_rel_to_last_bout.append(np.nan)
+
             else:
                 self.cstart_rel_to_barrier.append(np.nan)
+                self.cstart_rel_to_last_bout.append(np.nan)
 
+
+                
 # contourfinder dynamically thresholds a background subtracted image
 # until a criteria of contour size and proximity to the fish is reached for a
 # contour. the function is recursive in that it continues to lower the
@@ -1064,21 +1160,27 @@ def plot_all_results(cond_collector_list):
             str(incorrect_moves) + ' Incorrect', size=10)
 
     pl.tight_layout()
-    barfig, barax = pl.subplots(2, 3, figsize=(8, 6))
+    barfig, barax = pl.subplots(3, 3, figsize=(8, 6))
     barax[0, 0].set_title('% CStart Away from Barrier')
     barax[1, 0].set_title('# Collisions')
     barax[0, 1].set_title('CStart Latency (ms)')
     barax[0, 2].set_title('CStart Angle (deg)')
     barax[1, 1].set_title('Probability of Tap Per Arena Entry')
-    barax[1, 2].set_title('Time Spent in Barrier Zone')
+    barax[1, 2].set_title('Total Time Spent in Barrier Zone')
+    barax[2, 0].set_title('Phototaxis to Tap Time')
+    barax[2, 1].set_title('CStart Rel to Prevbout')
     sb.violinplot(data=[np.concatenate(bdist, axis=0) for bdist 
                         in [c['Distance From Barrier After Escape']
                         for c in cond_data_arrays]],  ax=axes[1])
     cstart_percentage_data = [cdir[~np.isnan(cdir)] for
                               cdir in [c['Correct CStart Percentage']
                               for c in cond_data_arrays]]
+    cstart_rel_to_prevbout = [cdir[~np.isnan(cdir)] for
+                              cdir in [c['CStart Rel to Prevbout']
+                              for c in cond_data_arrays]]
     sb.barplot(data=cstart_percentage_data, 
                ax=barax[0, 0], estimator=np.nanmean)
+    sb.barplot(data=cstart_rel_to_prevbout, ax=barax[2, 1], estimator=np.nanmean)
     collision_percentage_data = [clp[~np.isnan(clp)] for
                                  clp in [c['Collision Percentage']
                                          for c in cond_data_arrays]]
@@ -1092,17 +1194,19 @@ def plot_all_results(cond_collector_list):
                      cang in [c['CStart Angle']
                               for c in cond_data_arrays]],
                ax=barax[0, 2])
-
     taps_per_entry = [num_entries[~np.isnan(num_entries)] for
                       num_entries in [c['Taps Per Entry Into Arena']
                                       for c in cond_data_arrays]]
     sb.boxplot(data=taps_per_entry,
                ax=barax[1, 1])
-    
     sb.boxplot(data=[dur[~np.isnan(dur)] for
-                     dur in [c['Time Per Center Entry']
+                     dur in [c['Total Time In Center']
                              for c in cond_data_arrays]],
                ax=barax[1, 2])
+    sb.boxplot(data=[ptax[~np.isnan(ptax)] for
+                     ptax in [c['Phototaxis to Tap Time']
+                              for c in cond_data_arrays]],
+               ax=barax[2, 0])
     pl.tight_layout()
     pl.show()
 
@@ -1171,14 +1275,14 @@ def experiment_collector(drct_list, cond_list, *new_exps):
 
 if __name__ == '__main__':
 
-    # hd = experiment_collector(['030519_1', '030519_2',
-    #                            '030719_1', '030719_2', '030719_3'],
-    #                           ['030519_1', '030519_2',
-    #                            '030719_1', '030719_2', '030719_3'])
+    hd = experiment_collector(['030519_1', '030519_2',
+                               '030719_1', '030719_2', '030719_3'], ['l', 'd'],
+                              ['030519_1', '030519_2',
+                               '030719_1', '030719_2', '030719_3'])
 
-    all_dist_list = ['043019_2', '050219_3', '050219_4']
-    parse_obj_by_trial(all_dist_list, 'l', 3)
-#    hd = experiment_collector(all_dist_list, ['l0', 'l1', 'l2'])
+#     all_dist_list = ['043019_2', '050219_3', '050219_4']
+# #    parse_obj_by_trial(all_dist_list, 'l', 3)
+#     hd = experiment_collector(all_dist_list, ['l0', 'l1', 'l2'])
 
     # FOR 54 SMALL VS 108 BIG
     # have to write an experiment collector call for each list you want
@@ -1191,7 +1295,7 @@ if __name__ == '__main__':
     # drct_list = [alldrcts]
     # parse_obj_by_trial(alldrcts, 'l', 2)
     # ec = experiment_collector(alldrcts, ['l0', 'l1'])
-    #plot_all_results(ec)
+    plot_all_results(hd)
 
     
 

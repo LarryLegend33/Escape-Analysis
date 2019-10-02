@@ -2,6 +2,7 @@ import csv
 import os
 import numpy as np
 import math
+from collections import Counter
 from matplotlib import pyplot as pl
 from matplotlib.cm import ScalarMappable
 from matplotlib.collections import LineCollection
@@ -14,43 +15,228 @@ import toolz
 import scipy.ndimage
 import pickle
 from toolz.itertoolz import sliding_window, partition
-from scipy.ndimage import gaussian_filter
+from scipy.ndimage import gaussian_filter, uniform_filter
 
 
-def plot_xy_experiment(b_list, b_diams, exp_type, drc):
-    fig = pl.figure()
-    axes = fig.add_subplot(111, axisbg='.75')
-    axes.grid(False)
-    for br, bd in zip(b_list, b_diams):
-        barrier_x = br[0]
-        barrier_y = br[1]
-        barrier_diameter = bd
-        barrier_plot = pl.Circle((barrier_x, barrier_y),
-                                 barrier_diameter / 2, fc='r')
-        axes.add_artist(barrier_plot)
-    xcoords, ycoords = get_xy(exp_type, drc)
-    v_from_center = []
-    for crd in zip(xcoords, ycoords):
-        vector = np.array(crd)
-        center_mag = magvector_center(vector)
-        v_from_center.append(center_mag)
-    delta_center_mag = [b-a for a, b in sliding_window(2, v_from_center)]
-    axes.plot(xcoords, ycoords)
-    axes.axis('equal')
-    pl.show()
-    return xcoords, ycoords, v_from_center, delta_center_mag
 
+def proximity_calculator(nav_list, condition):
+    coords_wrt_barrier = []
+    nav_object_collection = []
+    for nl_item in nav_list:
+        nav_directory = os.getcwd() + '/' + nl_item
+        nav_object = Navigator(condition, nav_directory)
+        nav_object.norm_coords_to_barrier()
+        coords_wrt_barrier += nav_object.coords_wrt_closest_barrier
+        nav_object_collection.append(nav_object)
+
+    coords_wrt_barrier = np.array(coords_wrt_barrier)
+    xmax = np.nanmax(coords_wrt_barrier[:, 0])
+    xmin = np.nanmin(coords_wrt_barrier[:, 0])
+    ymax = np.nanmax(coords_wrt_barrier[:, 1])
+    ymin = np.nanmin(coords_wrt_barrier[:, 1])
+
+    scale_factor = 200
     
-def get_xy(exp_type, drc):
-    xy_file = np.loadtxt(drc + '/all_xycoords_' + exp_type + '.txt',
-                         dtype='string')
-    xcoords = []
-    ycoords = []
-    for coordstring in xy_file:
-        x, y = x_and_y_coord(coordstring)
-        xcoords.append(x)
-        ycoords.append(y)
-    return xcoords, ycoords
+    # xmax = scale_factor
+    # xmin = -1*scale_factor
+    # ymax = scale_factor
+    # ymin = -1*scale_factor
+    
+    proximity_matrix = np.zeros([ymax-ymin+1, xmax-xmin+1])
+    for coord in coords_wrt_barrier:
+        if np.isfinite(coord).all():
+            if (xmin < coord[0] < xmax) and (ymin < coord[1] < ymax):
+                proximity_matrix[int(coord[1] - ymin), int(coord[0] - xmin)] += 1
+
+    fig, ax = pl.subplots(1, 1)
+    filt_proxmat = gaussian_filter(proximity_matrix, 5)
+ #   filt_proxmat = proximity_matrix
+    
+    sb.heatmap(filt_proxmat, center=(np.max(filt_proxmat) - np.min(filt_proxmat))  / 2)
+#    sb.heatmap(proximity_matrix)
+    barrier = pl.Circle((-1*xmin, -1*ymin),
+                        nav_object.barrier_diams[0] / 2, ec='None', fc='w')
+    ax.add_artist(barrier)
+    pl.show()
+    return nav_object_collection
+
+class Navigator:
+    
+    def __init__(self, condition, drc):
+        self.barrier_coords = []
+        self.barrier_diams = []
+        self.condition = condition
+        self.drc = drc
+        self.xy_coords = []
+        self.mags_from_center = []
+        self.coords_wrt_closest_barrier = []
+        self.get_xy()
+        self.load_barrier_info()
+        self.inbound_swims = []
+        self.outbound_swims = []
+        
+    def load_barrier_info(self):
+        self.barrier_coords = []
+        self.barrier_diams = []
+        barrier_file = np.loadtxt(
+                self.drc + '/barrierstruct_' + exp_type + '.txt',
+                dtype='string')
+        for line, j in enumerate(barrier_file[2:]):
+            if line % 2 == 0:
+                self.barrier_coords.append(x_and_y_coord(j))
+            else:
+                self.barrier_diams.append(float(j))
+
+    def get_xy(self):
+        self.xy_coords = []
+        xy_file = np.loadtxt(self.drc + '/all_xycoords_' + exp_type + '.txt',
+                             dtype='string')
+        xcoords = []
+        ycoords = []
+        for coordstring in xy_file:
+            x, y = x_and_y_coord(coordstring)
+            xcoords.append(x)
+            ycoords.append(y)
+        self.xy_coords = np.array(zip(xcoords, ycoords))
+
+        v_from_center = []
+        for crd in self.xy_coords:
+            vector = np.array(crd)
+            center_mag = magvector_center(vector)
+            v_from_center.append(center_mag)
+        self.mags_from_center = v_from_center
+
+    def norm_coords_to_barrier(self):
+        self.coords_wrt_closest_barrier = []
+        for coord in self.xy_coords:
+            vec_to_barrier = [coord - bc for bc in self.barrier_coords]
+            vec_mags = [magvector(v) for v in vec_to_barrier]
+            self.coords_wrt_closest_barrier.append(
+                vec_to_barrier[np.argmin(vec_mags)])
+            
+    def plot_xy_experiment(self):
+        fig = pl.figure()
+        axes = fig.add_subplot(111, facecolor='.75')
+        axes.grid(False)
+        for br, bd in zip(self.barrier_coords, self.barrier_diams):
+            barrier_x = br[0]
+            barrier_y = br[1]
+            barrier_diameter = bd
+            barrier_plot = pl.Circle((barrier_x, barrier_y),
+                                     barrier_diameter / 2, fc='r')
+            axes.add_artist(barrier_plot)
+        axes.plot(self.xy_coords[:, 0], self.xy_coords[:, 1])
+        axes.axis('equal')
+        pl.show()
+
+    def distance_from_center(self):
+        all_mags = []
+        for xy in self.xy_coords:
+            mag_from_center = magvector_center([xy[0], xy[1]])
+            if not math.isnan(mag_from_center):
+                all_mags.append(mag_from_center)
+        sb.distplot(np.array(all_mags), bins=50)
+        pl.show()
+        
+
+    def get_crossing_profile(self):
+        self.inbound_outbound()
+        nearest_b, lines = barrier_center(self.barrier_coords)
+        line_functions = fit_barrierline(lines, self.barrier_coords)
+        xpaths, ypaths = xy_paths(self.xy_coords[:, 0],
+                                  self.xy_coords[:, 1], self.outbound_swims)
+        lr = l_or_r(self.barrier_coords, lines)
+        # #returns pairwise readouts for which barrier is right or left of other barriers. 
+        crossings = crosscoords(xpaths, ypaths, line_functions)
+        mid_prox = np.array(midpoint_proximity(crossings, self.barrier_coords,
+                                               self.barrier_diams, lines))
+        pl.hist(mid_prox, bins=50, color='r')
+        rat = barrier_ratios(crossings, self.barrier_coords, lines, lr)
+        sb.distplot([r[0] for r in rat], bins=50)
+        pl.show()
+
+# # so rat contains the ratios of left to right barriers, normalized so that 0 is the leftmost, and 2 is the rightmost possible.
+# # each entry contains a second variable that shows which barrier is on the left and which is on the right. filter accordingly when
+# # you start using new types of barriers.
+
+        
+        
+
+    def inbound_outbound(self):
+        fig = pl.figure()
+        ax = fig.add_subplot(111)
+        delta_mag = np.diff(self.mags_from_center)
+        filt_mag = gaussian_filter(delta_mag, 10)
+        sign_switch = np.diff(np.sign(filt_mag)) != 0
+        outbound_swims = []
+        inbound_swims = []
+        if filt_mag[0] < 0:
+            switch = True
+        else:
+            switch = False
+        switch_origin = 0
+        for ind, delta in enumerate(sign_switch):
+            if delta:
+                if math.isnan(filt_mag[ind]):
+                    continue
+                switch_inds = [switch_origin, ind]
+                if switch:
+                    ax.plot(
+                        self.xy_coords[:, 0][switch_inds[0]:switch_inds[1]],
+                        self.xy_coords[:, 1][switch_inds[0]:switch_inds[1]],
+                        color='k', linewidth=.5)
+                    outbound_swims.append(switch_inds)
+                else:
+                    ax.plot(
+                        self.xy_coords[:, 0][switch_inds[0]:switch_inds[1]],
+                        self.xy_coords[:, 1][switch_inds[0]:switch_inds[1]],
+                        color='m', linewidth=.5)
+                    inbound_swims.append(switch_inds)
+                switch = not switch
+                switch_origin = ind
+
+        for b_ind, (br, bd) in enumerate(zip(self.barrier_coords,
+                                             self.barrier_diams)):
+            barrier_x = br[0]
+            barrier_y = br[1]
+            barrier_diameter = bd
+            barrier_plot = pl.Circle((barrier_x, barrier_y),
+                                     barrier_diameter / 2, fc='k')
+            ax.text(barrier_x, barrier_y, str(b_ind), color='w')
+            ax.add_artist(barrier_plot)
+        ax.axis('equal')
+        pl.show()
+        self.inbound_swims = inbound_swims
+        self.outbound_swims = outbound_swims
+    
+    
+
+def magvector(vec):
+    mag = np.sqrt(np.dot(vec, vec))
+    return mag
+
+
+def outlier_filter(xcoords, ycoords):
+    new_x = [xcoords[0]]
+    new_y = [ycoords[0]]
+    for i, crds in enumerate(zip(xcoords[1:], ycoords[1:])):
+        diff_vec = [crds[0] - new_x[-1], crds[1] - new_y[-1]]
+        vmag = magvector(diff_vec)
+        if i == len(xcoords) - 1:
+            return new_x, new_y
+        elif vmag < 100:
+            new_x.append(crds[0])
+            new_y.append(crds[1])
+        else:
+            new_x.append(new_x[-1])
+            new_y.append(new_y[-1])
+            xcoords = new_x + xcoords[i+2:]
+            ycoords = new_y + ycoords[i+2:]
+            try:
+                return outlier_filter(xcoords, ycoords)
+            except RuntimeError:
+                return [], []
+    return new_x, new_y
 
 
 def x_and_y_coord(coord):
@@ -86,20 +272,6 @@ def magvector_diff(vec1, vec2):
     mag = np.sqrt(np.dot(dist_vec, dist_vec))
     return mag
 
-
-
-def load_barrier_info(exp_type, drc):
-    barrier_file = np.loadtxt(
-            drc + '/barrierstruct_' + exp_type + '.txt',
-            dtype='string')
-    barrier_coords = []
-    diam_list = []
-    for line, j in enumerate(barrier_file[2:]):
-        if line % 2 == 0:
-            barrier_coords.append(x_and_y_coord(j))
-        else:
-            diam_list.append(float(j))
-    return barrier_coords, diam_list
 
 def barrier_center(bloc):
     two_nearest_barriers = []
@@ -151,60 +323,9 @@ def fit_barrierline(linelist, bloc):
     
                                      
     
-def inbound_outbound(xcoords, ycoords, delta_mag, bloc, bdiam):
-
-    # nans here are being detected as changes
-    fig = pl.figure()
-    ax = fig.add_subplot(111)
-    filt_mag = gaussian_filter(delta_mag, 10)
-    sign_switch = np.diff(np.sign(filt_mag)) != 0
-    outbound_swims = []
-    inbound_swims = []
-    if filt_mag[0] < 0:
-        switch = True
-    else:
-        switch = False
-    switch_origin = 0
-    for ind, delta in enumerate(sign_switch):
-        if delta:
-            if math.isnan(filt_mag[ind]):
-                continue
-            switch_inds = [switch_origin, ind]
-            if switch:
-                ax.plot(xcoords[switch_inds[0]:switch_inds[1]],
-                        ycoords[switch_inds[0]:switch_inds[1]],
-                        color='k', linewidth=.5)
-                outbound_swims.append(switch_inds)
-            else:
-                ax.plot(xcoords[switch_inds[0]:switch_inds[1]],
-                        ycoords[switch_inds[0]:switch_inds[1]],
-                        color='m', linewidth=.5)
-                inbound_swims.append(switch_inds)
-            switch = not switch
-            switch_origin = ind
-            
-    for b_ind, (br, bd) in enumerate(zip(bloc, bdiam)):
-        barrier_x = br[0]
-        barrier_y = br[1]
-        barrier_diameter = bd
-        barrier_plot = pl.Circle((barrier_x, barrier_y),
-                                 barrier_diameter / 2, fc='k')
-        ax.text(barrier_x, barrier_y, str(b_ind), color='w')
-        ax.add_artist(barrier_plot)
-    ax.axis('equal')
-    pl.show()
-    return inbound_swims, outbound_swims
 
 
-def distance_from_center(xc, yc):
-    all_mags = []
-    for x, y in zip(xc, yc):
-        mag_from_center = magvector_center([x, y])
-        if not math.isnan(mag_from_center):
-            all_mags.append(mag_from_center)
-    sb.distplot(np.array(all_mags), bins=50)
-    pl.show()
-    
+
 
 
 
@@ -340,38 +461,28 @@ def midpoint_proximity(crossings, bloc, bdiams, lines):
         ratio = dist_from_mp / maxd
         crossratios.append(ratio)
     return crossratios
+
+
+exp_type = 'b'
+directory = '052319_2'
+print directory
+navs = proximity_calculator([directory], exp_type)
+
+
+
+# barrier_loc, barrier_diams = load_barrier_info(exp_type, directory)
+
+# # this function is going to have to take the boundaries of the light / dark switch as an arg
+# # so that the correct x and y coords are taken from the experiment. 
+
+
+
+
+
+
+
+
     
-exp_type = 'l'
-directory = os.getcwd() + '/Fish1'
-barrier_loc, barrier_diams = load_barrier_info(exp_type, directory)
 
-# this function is going to have to take the boundaries of the light / dark switch as an arg
-# so that the correct x and y coords are taken from the experiment. 
 
-xcoords, ycoords, vmag, delta_mag = plot_xy_experiment(barrier_loc,
-                                                       barrier_diams,
-                                                       exp_type,
-                                                       directory)
-distance_from_center(xcoords, ycoords)
-inbound, outbound = inbound_outbound(
-    xcoords, ycoords, delta_mag, barrier_loc, barrier_diams)
 
-nearest_b, lines = barrier_center(barrier_loc)
-line_functions = fit_barrierline(lines, barrier_loc)
-xpaths, ypaths = xy_paths(xcoords, ycoords, outbound)
-lr = l_or_r(barrier_loc, lines)
-#returns pairwise readouts for which barrier is right or left of other barriers. 
-crossings = crosscoords(xpaths, ypaths, line_functions)
-#r = np.array(
- #   midpoint_proximity(crossings, barrier_loc, barrier_diams, lines))
- 
-#multiple crossings get all F'ed up with inbound I think.
-#pl.hist(r, bins=50, color='r')
-
-# so rat contains the ratios of left to right barriers, normalized so that 0 is the leftmost, and 2 is the rightmost possible.
-# each entry contains a second variable that shows which barrier is on the left and which is on the right. filter accordingly when
-# you start using new types of barriers.
-
-rat = barrier_ratios(crossings, barrier_loc, lines, lr)
-sb.distplot([r[0] for r in rat], bins=50)
-pl.show()
