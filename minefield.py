@@ -33,7 +33,7 @@ from itertools import izip_longest
 # and plotting the escape trajectory relative to a barrier position
 
 class Condition_Collector:
-    def __init__(self, condition):
+    def __init__(self, condition, *bigbarrier):
         self.condition = condition
         self.escape_data = {'Heading vs Barrier': [],
                             'Distance From Barrier After Escape': [],
@@ -48,58 +48,96 @@ class Condition_Collector:
                             'Barrier On Left Trajectories': [],
                             'Barrier On Right Trajectories': []}
         self.timerange = []
+        self.distance_thresh = 0
+        if big_barrier != ():
+            self.distance_thresh = big_barrier[0]
+        
 
     def update_ddict(self, escape_obj):
         if escape_obj.condition != self.condition:
             raise Exception('input condition mistmatch with class')
         else:
+
+            initial_distances_to_barrier = [initial[0] for initial
+                                            in escape_obj.initial_conditions]
+            trialfilter = [i if d < self.distance_thresh for i, d in enumerate(
+                initial_distances_to_barrier)]
+
+            # MAKE THIS A LOOP BASED ON THE LENGTH OF THE XYCOORDINATE ARRAY
+            # GET RID OF ALL LIST COMPREHENSIONS AND PASS IF THE INITIAL CONDITION IS NOT HIT. 
+            
+            # one option is to copy the escape_object and in place filter by initial distances
+            # another option is to keep things this way, but filter each array.
             self.timerange = escape_obj.timerange
             tap_times = []
-            for gf in escape_obj.pre_escape:
+            last_x = []
+            last_y = []
+            last_xy = []
+            barrier_xy_by_trial = []
+            non_nan_cstarts = []
+            non_nan_cstarts_rel_to_prevbout = []
+            cstart_angles = []
+            non_nan_collisions = []
+            
+            for trial in range(len(escape_obj.xy_coords_by_trial)):
+                
+                if trial not in trialfilter:
+                    continue
+                gf = escape_obj.pre_escape[trial]
                 try:
                     num_gfs = len(gf)
                 except TypeError:
                     num_gfs = 1
                 tap_times.append(num_gfs / 200.0)
-            self.escape_data['Phototaxis to Tap Time'] += tap_times
-            last_x = [c[0][escape_obj.timerange[1]]
-                      for c in escape_obj.xy_coords_by_trial]
-            last_y = [c[1][escape_obj.timerange[1]]
-                      for c in escape_obj.xy_coords_by_trial]
+                last_x.append(escape_obj.xy_coords_by_trial[trial][1][
+                    escape_obj.timerange[1]])
+                last_y.append(escape_obj.xy_coords_by_trial[trial][0][
+                    escape_obj.timerange[1]])
+                barrier_xy_by_trial.append(
+                    escape_obj.barrier_xy_by_trial[trial])
+                if not math.isnan(escape_obj.cstart_rel_to_barrier[trial]):
+                    non_nan_cstarts.append(
+                        escape_obj.cstart_rel_to_barrier[trial])
+                if not math.isnan(escape_obj.cstart_rel_to_last_bout[trial]):
+                    non_nan_cstarts_rel_to_prevbout.append(
+                        escape_obj.cstart_rel_to_last_bout[trial])
+                if not math.isnan(escape_obj.collisions[trial]):
+                    non_nan_collisions.append(escape_obj.collisions[trial])
+                cstart_angles.append(escape_obj.cstart_angles[trial])
+
+            if len(escape_obj.numgrayframes) != 0:
+                self.escape_data['Taps Per Entry Into Arena'].append(
+                    len(self.xy_coords_by_trial) / float(
+                        len(escape_obj.numgrayframes)))
+                self.escape_data[
+                    'Total Time In Center'] += escape_obj.numgrayframes.tolist()
+            self.escape_data['Collision Percentage'].append(
+                np.sum(non_nan_collisions) / float(
+                    len(non_nan_collisions)))
+            self.escape_data['CStart Angle'] += cstart_angles            
+            br, bl = escape_obj.escapes_vs_barrierloc(0, trialfilter)
+            self.escape_data['Heading vs Barrier'] += escape_obj.h_vs_b_plot(
+                0, trialfilter)
+            self.escape_data['Barrier On Left Trajectories'] += bl
+            self.escape_data['Barrier On Right Trajectories'] += br
             last_xy = zip(last_x, last_y)
             self.escape_data['Distance From Barrier After Escape'].append(
                 [magvector([xyl[0] - bxy[0], xyl[1] - bxy[1]]) for
-                 xyl, bxy in zip(last_xy, escape_obj.barrier_xy_by_trial)])
-            self.escape_data['Heading vs Barrier'] += escape_obj.h_vs_b_plot(0)
-            br, bl = escape_obj.escapes_vs_barrierloc(1)
-            self.escape_data['Barrier On Left Trajectories'] += bl
-            self.escape_data['Barrier On Right Trajectories'] += br
-            non_nan_cstarts = [cs for cs in escape_obj.cstart_rel_to_barrier
-                               if not math.isnan(cs)]
-            non_nan_cstart_rel_to_prevbout = [cs for cs in escape_obj.cstart_rel_to_last_bout
-                                              if not math.isnan(cs)]
+                 xyl, bxy in zip(last_xy, barrier_xy_by_trial)])
+            
+            self.escape_data['Phototaxis to Tap Time'] += tap_times
             self.escape_data['Correct CStart Percentage'].append(np.sum(
                 non_nan_cstarts) / float(
                     len(non_nan_cstarts)))
             self.escape_data['CStart Rel to Prevbout'].append(np.sum(
-                non_nan_cstart_rel_to_prevbout) / float(
-                    len(non_nan_cstart_rel_to_prevbout)))
+                non_nan_cstarts_rel_to_prevbout) / float(
+                    len(non_nan_cstarts_rel_to_prevbout)))
             self.escape_data[
-                'CStart Latency'] += np.array(escape_obj.stim_init_times)[
-                    escape_obj.stim_times_accurate].tolist()
-            self.escape_data['CStart Angle'] += escape_obj.cstart_angles
-            if len(escape_obj.numgrayframes) != 0:
-                self.escape_data['Taps Per Entry Into Arena'].append(
-                    len(escape_obj.xy_coords_by_trial) / float(
-                        len(escape_obj.numgrayframes)))
-                self.escape_data[
-                    'Total Time In Center'] += escape_obj.numgrayframes
-            non_nan_collisions = [col for col in escape_obj.collisions
-                                  if not math.isnan(col)]
-            self.escape_data['Collision Percentage'].append(
-                np.sum(non_nan_collisions) / float(
-                    len(non_nan_collisions)))
+                'CStart Latency'] += np.array(escape_obj.stim_init_times)[trialfilter][
+                    np.array(escape_obj.stim_times_accurate).astype(np.bool)[trialfilter]].tolist()
 
+
+            
     def convert_to_nparrays(self):
         np_array_dict = {}
         for ky, it in self.escape_data.iteritems():
@@ -213,8 +251,8 @@ class Escapes:
     # 0 h_vs_b would indicate the fish pointing at the barrier while
     # pi is perfectly away. 
         
-    def h_vs_b_plot(self, plot_fish):
-        # h_vs_b_mod = [np.mod(
+    def h_vs_b_plot(self, plot_fish, *trialfilter):
+        # h_vs_b_mod = [np.mod
         #     hb_trial, 2*np.pi) for hb_trial in self.h_vs_b_by_trial]
 
 
@@ -222,9 +260,15 @@ class Escapes:
 # currently the h_vs_b is on a -180 to 180 scale with 0 as barrier directly in front, negatives on the left.
 # abs does do the trick of seeing if the absolute angle grows, but misses crossings (i.e. -60 to 80 would be the same as -60 to -80, which is a
 # much lower amplitude turn. TRY:
-        
+
+        if trialfilter != ():
+            trialfilter = trialfilter[0]
+            h_vs_b_by_trial = [self.h_vs_b_by_trial[i] for i in trialfilter]
+        else:
+            h_vs_b_by_trial = self.h_vs_b_by_trial
+            
         h_vs_b_mod = [np.array(hb_trial) if hb_trial[0] > 0 else -1*np.array(
-            hb_trial) for hb_trial in self.h_vs_b_by_trial]
+            hb_trial) for hb_trial in h_vs_b_by_trial]
         
 #        h_vs_b_mod = [np.abs(hb_trial) for hb_trial in self.h_vs_b_by_trial]
         if plot_fish:
@@ -402,7 +446,7 @@ class Escapes:
     def find_correct_background(self, curr_trial):
         trial_list = np.array([b[1] for b in self.backgrounds])
         min_value = np.min(np.abs(trial_list-curr_trial))
-        closest_inds = np.where(np.abs(trial_list-curr_trial == min_value))[0]
+        closest_inds = np.where(np.abs(trial_list-curr_trial) == min_value)[0]
         candidate_backgrounds = self.backgrounds[closest_inds[0]:closest_inds[-1]+1]
         br_conditions = [cb[2] for cb in candidate_backgrounds]
         if self.condition in br_conditions:
@@ -605,8 +649,8 @@ class Escapes:
 # you can chose to plot these trajectories for a single fish or
 # wrap this function and plot many fish.
 
-    def escapes_vs_barrierloc(self, *dontplot):
-        if dontplot == ():
+    def escapes_vs_barrierloc(self, plotit, *trialfilter):
+        if plotit:
             turn_fig = pl.figure()
             turn_ax = turn_fig.add_subplot(111)
             turn_ax.set_xlim([-100, 100])
@@ -614,7 +658,13 @@ class Escapes:
         timerange = self.timerange
         barrier_on_left = []
         barrier_on_right = []
+        if trialfilter != ():
+            trialfilter = trialfilter[0]
+        else:
+            trialfilter = range(len(self.xy_coords_by_trial))
         for trial, xy_coords in enumerate(self.xy_coords_by_trial):
+            if trial not in trialfilter:
+                continue
             if xy_coords == []:
                 continue
             to_barrier_init = self.initial_conditions[trial][0]
@@ -630,7 +680,7 @@ class Escapes:
                 y_escape = y_escape - y_escape[0]
                 if to_barrier_init < 0:
                     barrier_on_left.append([x_escape, y_escape])
-                    if dontplot == ():
+                    if plotit:
                         turn_ax.plot(
                             x_escape,
                             y_escape, 'b')
@@ -642,7 +692,7 @@ class Escapes:
                             backgroundcolor='w')
                 elif to_barrier_init > 0:
                     barrier_on_right.append([x_escape, y_escape])
-                    if dontplot == ():
+                    if plotit:
                         turn_ax.plot(
                             x_escape,
                             y_escape, 'm')
@@ -652,7 +702,7 @@ class Escapes:
                             str(trial),
                             size=10,
                             backgroundcolor='w')
-        if dontplot == ():
+        if plotit:
             pl.show()
         else:
             return barrier_on_left, barrier_on_right
@@ -665,7 +715,7 @@ class Escapes:
         
     def find_cstart(self, plotornot):
         for trial, xyc in enumerate(self.xy_coords_by_trial):
-            if xyc[0] == [] or not self.stim_times_accurate[trial]:
+            if xyc[0] == []: # or not self.stim_times_accurate[trial]:
                 self.cstart_rel_to_barrier.append(np.nan)
                 self.cstart_rel_to_last_bout.append(np.nan)
                 self.cstart_angles.append(np.nan)
@@ -765,6 +815,8 @@ class Escapes:
             self.escape_latencies.append(c_start_ind - stim_init)
     # Get latency here based on stim index and c_start_index
 
+
+    # switch this threshold to ask questions about specific intial conditions before cstart
             if not math.isnan(c_start_angle):
 #                    np.abs(self.initial_conditions[trial][0]) > .2):
                 if np.sum(
@@ -1137,8 +1189,8 @@ def plot_all_results(cond_collector_list):
     cond_list = [c.condition for c in cond_collector_list]
     # if cond_list != cond_list_orig:
     #     raise Exception('cond_collector in wrong order')
-    esc_assess_time = (cond_collector_list[
-        0].timerange[1] - cond_collector_list[0].timerange[0]) / 2
+#    esc_assess_time = (cond_collector_list[
+#        0].timerange[1] - cond_collector_list[0].timerange[0]) / 2
     cpal = sb.color_palette()
     fig, axes = pl.subplots(1, 2)
     axes[0].set_title('Fish Orientation vs. Barrier (rad)')
@@ -1154,6 +1206,7 @@ def plot_all_results(cond_collector_list):
     for cond_ind, cond_data_as_list in enumerate(cond_collector_list):
         cond_data = cond_data_as_list.convert_to_nparrays()
         cond_data_arrays.append(cond_data)
+        print cond_data
         sb.tsplot(np.array(cond_data['Heading vs Barrier']),
                   ax=axes[0], estimator=np.nanmean, color=cpal[cond_ind])
 
@@ -1220,7 +1273,7 @@ def plot_all_results(cond_collector_list):
     sb.boxplot(data=[cang[~np.isnan(cang)] for
                      cang in [c['CStart Angle']
                               for c in cond_data_arrays]],
-               ax=barax[0, 2])
+               ax=barax[0, 2], notch=True)
     taps_per_entry = [num_entries[~np.isnan(num_entries)] for
                       num_entries in [c['Taps Per Entry Into Arena']
                                       for c in cond_data_arrays]]
@@ -1273,7 +1326,8 @@ def experiment_collector(drct_list, cond_list, *new_exps):
         fish_id = '/' + newexp_dirct
         pl.ioff()
         area_thresh = 47
-        esc_dir = os.getcwd() + fish_id
+#        esc_dir = os.getcwd() + fish_id
+        esc_dir = '/Volumes/Escapes_HD/EscapeAnalysis' + fish_id
         print esc_dir
         plotcstarts = False
         for cond in cond_list:
@@ -1286,7 +1340,8 @@ def experiment_collector(drct_list, cond_list, *new_exps):
 # CATCH FOR SPLITTING ACCORDING TO TRIAL GOES HERE. 
             
     for drct in drct_list:
-
+        drct = '/Volumes/Escapes_HD/EscapeAnalysis/' + drct
+        print drct
         for cond_ind, cond_collector in enumerate(cond_collector_list):
             try:
                 print('loading cond ' + str(cond_ind+1) + ' trials')
@@ -1301,16 +1356,229 @@ def experiment_collector(drct_list, cond_list, *new_exps):
 # SIMPLY CALL EXPERIMENT_COLLECTOR ON TWO SEPARATE DRCT_LISTS AND THEN + THEM, PUT INTO PLOT_ALL
     
 
+# For big barriers, want to threshold on distance from the barrier at outset.
+# If not > 110, chuck. 
+
+
 if __name__ == '__main__':
+
+
+
+    
 
     # hd = experiment_collector(['030519_1', '030519_2',
     #                            '030719_1', '030719_2', '030719_3'], ['l', 'd'],
     #                           ['030519_1', '030519_2',
     #                            '030719_1', '030719_2', '030719_3'])
-    hd = experiment_collector(['091119_4'], ['v', 'i', 'n'], ['091119_4'])
+  
             
             
 
+
+ # hd = experiment_collector(['030519_1', '030519_2',
+    #                            '030719_1', '030719_2', '030719_3'], ['l', 'd'],
+    #                           ['030519_1', '030519_2',
+    #                            '030719_1', '030719_2', '030719_3'])
+    # hd = experiment_collector(['091119_4'], ['v', 'i', 'n'], ['091119_4'])
+
+    # VIRTUAL BARRIERS
+    # virtual = ['091119_4', '091019_1', '091019_2', '091119_1', '091119_2', '091119_3',
+    #            '091119_5', '091319_1', '091319_2', '091319_3',
+    #            '091319_4', '092719_1','092719_2', '092719_3', '092719_4', '100219_1', '100219_2',
+    #            '100219_3', '100219_4', '100219_6', '100219_7', '100219_5']
+    # ec1 = experiment_collector(virtual, ['v', 'i', 'n'], virtual)
+    # plot_all_results(ec1)
+
+    # RED
+
+    four_b = ['030519_2', '022619_2', '030719_1', '030719_2',
+              '030719_3', '032619_1', '032919_1', '040319_1',
+              '040419_2', '040519_2', '041719_1', '041819_1',
+              '041919_2', '042319_1', '102319_1', '102319_2',
+              '102419_1', '102519_1', '110219_1', '110219_2',
+              '032819_1', '030519_1']
+
+    # '042719_1' get from the big computer
+#    hd = experiment_collector(four_b, ['l', 'd', 'n'], four_b)
+    hd = experiment_collector(four_b, ['l', 'd', 'n'])
+
+    plot_all_results(hd)
+
+    # GIANT RED BARRIER
+
+    # giant_b = ['111219_3', '111219_1', '111219_2',
+    #            '111219_4', '111319_1', '111319_2', '111319_3']
+    #
+    # giant = experiment_collector(giant_b, ['l'], giant_b)
+    #
+    # plot_all_results(giant)
+
+    # WHITE
+
+    # four_w = ['072319_1', '072319_2', '072319_3', '072319_4',
+    # '072319_5', '072319_6', '072319_7', '072419_3',
+    # '072419_4', '072419_5','072419_6', '072419_7',
+    # '072419_8', '072419_9', '072519_1', '072619_1',
+    # '072619_2', '072619_3', '072619_4']
+    # w = experiment_collector(four_w, ['l'], four_w)
+    # plot_all_results(w)
+
+    # # ABLATED
+    #
+    # # ablatepsam = ['080819_1', '080819_2', '080819_3',
+    # #           '080819_4', '080819_5', '080819_6']
+    # # p = experiment_collector(ablatepsam, ['l'], ablatepsam)
+    #
+    #
+    # ablateotp = ['100919_1',
+    #              '100919_2', '100919_3','100919_4', '100919_5',
+    #              '100919_6']
+    # # '092019_1', '092019_2', '092019_3'
+    # otpcontrol = ['101119_1', '101119_2', '101119_3','101119_4', '101119_5']
+    # o = experiment_collector(ablateotp, ['l'])
+    # oc = experiment_collector(otpcontrol, ['l'])
+    # plot_all_results(o + oc)
+
+    # FOR ALL DIST
+
+    # all_dist_list = ['043019_2', '050219_3', '050219_4']
+    # par_obj_by_trial(all_dist_list, 'l', 3)
+    # hd = experiment_collector(all_dist_list, ['l0', 'l1', 'l2'])
+
+
+    # FOR 54 vs 108 BIG
+    # l0 is close (54), l1 is far (108)
+
+    # bigred54and108 = ['052919_1', '052919_2', '053119_2',
+    #        '053119_3', '060619_1', '060619_2',
+    #        '060719_2', '060719_3', '060719_5']
+    # parse_obj_by_trial(bigred54and108, 'l', 2)
+    # ec1 = experiment_collector(bigred54and108, ['l0', 'l1'], bigred54and108)
+    # plot_all_results(ec1)
+
+
+    # 54 SMALL and 108 BIG
+
+    # smallred54 = ['052119_1', '052119_4', '052119_5', '052219_2',
+    #            '052319_2', '052219_3', '052319_6', '052419_1',
+    #            '052419_4', '052419_5', '052319_3']
+    # bigred108 = ['052118_2', '052119_3', '052119_6', '052219_1',
+    #           '052319_1', '052319_4', '052319_5', '052419_2',
+    #           '052419_3', '052419_6']
+    # conds = ['l']
+    # ec2 = experiment_collector(smallred54, conds, smallred54)  # small
+    # ec3 = experiment_collector(bigred108, conds, bigred108)  # big
+    # plot_all_results(ec1 + ec2)
+
+
+    # Big white vs. big red at 54 and 108
+
+    # bigwhite54and108 = ['061919_1', '061919_5', '062019_3',
+    #          '062019_4', '062619_4', '062619_7']
+    # bigred54and1082 = ['061919_2', '061919_3', '062019_1',
+    #        '062019_2', '062019_5', '062119_1',
+    #        '062519_3', '062619_5', '062619_6']
+    # parse_obj_by_trial(white, 'l', 2)
+    # parse_obj_by_trial(red, 'l', 2)
+    # ec4 = experiment_collector(bigwhite54and108, ['l0'])
+    # ec5 = experiment_collector(bigred54and1082, ['l0'])
+    # ec6 = experiment_collector(bigwhite54and108, ['l1'])
+    # ec7 = experiment_collector(bigred54and1082, ['l1'])
+    # plot_all_results(ec4 + ec6)
+
+
+    # whites presented first vs. whites presented second
+
+    # wfirst = ['061919_1','061919_5','062019_4','062619_4']
+    # wsecond = ['062019_3','062619_7']
+    # w1small = experiment_collector(wfirst, ['l0'])
+    # w2small = experiment_collector(wsecond, ['l0'])
+    # w1big = experiment_collector(wfirst, ['l1'])
+    # w2big = experiment_collector(wsecond, ['l1'])
+    # plot_all_results(w1small + w2small + w1big + w2big)
+
+
+    # red presented first vs. red presented second
+
+    # rfirst = ['061919_3', '062019_2', '062119_1', '062519_3', '062619_6']
+    # rsecond = ['061919_2', '062019_1', '062019_5', '062619_5']
+    # r1small = experiment_collector(rfirst, ['l0'])
+    # r2small = experiment_collector(rsecond, ['l0'])
+    # r1big = experiment_collector(rfirst, ['l1'])
+    # r2big = experiment_collector(rsecond, ['l1'])
+    # plot_all_results(r1small + r2small + r1big + r2big)
+
+
+    # For big white 54 and big red 54 on white background
+
+    # bigwhite54 = ['071719_1','071719_2','071719_3','071719_4','071719_5',
+    #            '071719_6','071719_7','071719_8','071719_9','071719_10',
+    #            '071719_11','071719_12', '071819_1','071819_3',
+    #            '071819_4','071819_5','071019_1','071119_1']
+    # bigred54 = ['071019_2','071019_3', '071619_1', '071819_2',
+    #          '071919_1', '071919_2', '071919_3']
+    # conds = ['l']
+    # White = experiment_collector(bigwhite54, conds)
+    # Red = experiment_collector(bigred54, conds)
+    # plot_all_results(White + Red)
+
+    # MASS DATA COMBINED
+
+    # # tag bigred54 with l0
+    # bigred54label = ['071019_2','071019_3', '071619_1', '071819_2',
+    #                  '071919_1', '071919_2', '071919_3']
+    # parse_obj_by_trial(bigred54label, 'l', 1) # should make all l0
+    #
+    #
+    # allbigred54 = ['071019_2','071019_3', '071619_1', '071819_2',
+    #                '071919_1', '071919_2', '071919_3',
+    #                '061919_2', '061919_3', '062019_1',
+    #                '062019_2', '062019_5', '062119_1',
+    #                '062519_3', '062619_5', '062619_6',
+    #                '052919_1', '052919_2', '053119_2',
+    #                '053119_3', '060619_1', '060619_2',
+    #                '060719_2', '060719_3', '060719_5']
+    #
+    # ecallbigred54 = experiment_collector(allbigred54, ['l0'])
+    #
+    # allbigred108 = ['052919_1', '052919_2', '053119_2',
+    #        '053119_3', '060619_1', '060619_2',
+    #        '060719_2', '060719_3', '060719_5',
+    #        '061919_2', '061919_3', '062019_1',
+    #        '062019_2', '062019_5', '062119_1',
+    #        '062519_3', '062619_5', '062619_6']
+    #
+    # ecallbigred108 = experiment_collector(allbigred108, ['l1'])
+    #
+    # allsmallred54 = ['052119_1', '052119_4', '052119_5', '052219_2',
+    #                  '052319_2', '052219_3', '052319_6', '052419_1',
+    #                  '052419_4', '052419_5', '052319_3']
+    #
+    # ecallsmallred54 = experiment_collector(allsmallred54, ['l'])
+    #
+    # # tag bigwhite54 with l0
+    # bigwhite54label = ['071719_1','071719_2','071719_3','071719_4','071719_5',
+    #                    '071719_6','071719_7','071719_8','071719_9','071719_10',
+    #                    '071719_11','071719_12', '071819_1','071819_3',
+    #                    '071819_4','071819_5','071019_1','071119_1']
+    # parse_obj_by_trial(bigwhite54label, 'l', 1)  # should make all l0
+    #
+    # allbigwhite54 = ['071719_1','071719_2','071719_3','071719_4','071719_5',
+    #                  '071719_6','071719_7','071719_8','071719_9','071719_10',
+    #                  '071719_11','071719_12','071819_1','071819_3',
+    #                  '071819_4','071819_5','071019_1','071119_1', '061919_1',
+    #                  '061919_5', '062019_3','062019_4', '062619_4', '062619_7']
+    #
+    # ecallbigwhite54 = experiment_collector(allbigwhite54, ['l0'])
+    #
+    # allbigwhite108 = ['061919_1', '061919_5', '062019_3',
+    #                   '062019_4', '062619_4', '062619_7']
+    #
+    # ecallbigwhite108 = experiment_collector(allbigwhite54, ['l1'])
+    #
+    # plot_all_results
+
+    
 
 
 
@@ -1330,7 +1598,7 @@ if __name__ == '__main__':
     # drct_list = [alldrcts]
     # parse_obj_by_trial(alldrcts, 'l', 2)
     # ec = experiment_collector(alldrcts, ['l0', 'l1'])
-    plot_all_results(hd)
+ #   plot_all_results(hd)
 
     
 

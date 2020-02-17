@@ -35,7 +35,8 @@ def proximity_calculator(nav_list, condition):
     ymax = np.nanmax(coords_wrt_barrier[:, 1])
     ymin = np.nanmin(coords_wrt_barrier[:, 1])
 
-    scale_factor = 200
+    scale_factor = 150
+    barrier_location = np.array([-xmin, -ymin])
     
     # xmax = scale_factor
     # xmin = -1*scale_factor
@@ -45,18 +46,24 @@ def proximity_calculator(nav_list, condition):
     proximity_matrix = np.zeros([ymax-ymin+1, xmax-xmin+1])
     for coord in coords_wrt_barrier:
         if np.isfinite(coord).all():
-            if (xmin < coord[0] < xmax) and (ymin < coord[1] < ymax):
+            if magvector(coord) < scale_factor:
                 proximity_matrix[int(coord[1] - ymin), int(coord[0] - xmin)] += 1
 
-    fig, ax = pl.subplots(1, 1)
-    filt_proxmat = gaussian_filter(proximity_matrix, 5)
+    fig = pl.figure()
+    ax = fig.add_subplot(111)
+    filt_proxmat = gaussian_filter(proximity_matrix, 2)
  #   filt_proxmat = proximity_matrix
-    
-    sb.heatmap(filt_proxmat, center=(np.max(filt_proxmat) - np.min(filt_proxmat))  / 2)
+    min_proxmat = np.min(filt_proxmat[filt_proxmat > 0])
+    max_proxmat = np.max(filt_proxmat)
+ 
+    sb.heatmap(filt_proxmat, center=(max_proxmat - min_proxmat) / 2)
 #    sb.heatmap(proximity_matrix)
-    barrier = pl.Circle((-1*xmin, -1*ymin),
-                        nav_object.barrier_diams[0] / 2, ec='None', fc='w')
+    barrier = pl.Circle(barrier_location,
+                        nav_object.barrier_diams[0] / 2, ec='None', fc='r')
+    bounds = pl.Circle(barrier_location,
+                       scale_factor, ec='k', fc='None')
     ax.add_artist(barrier)
+    ax.add_artist(bounds)
     pl.show()
     return nav_object_collection
 
@@ -464,9 +471,9 @@ def midpoint_proximity(crossings, bloc, bdiams, lines):
 
 
 exp_type = 'b'
-directory = '052319_2'
-print directory
-navs = proximity_calculator([directory], exp_type)
+directories = ['052319_2', '052419_5', '052319_6']
+
+navs = proximity_calculator(directories, exp_type)
 
 
 
