@@ -1,4 +1,4 @@
-﻿import os
+import os
 import numpy as np
 import math
 from matplotlib import pyplot as pl
@@ -33,7 +33,7 @@ from itertools import izip_longest
 # and plotting the escape trajectory relative to a barrier position
 
 class Condition_Collector:
-    def __init__(self, condition, *bigbarrier):
+    def __init__(self, condition):
         self.condition = condition
         self.escape_data = {'Heading vs Barrier': [],
                             'Distance From Barrier After Escape': [],
@@ -42,27 +42,49 @@ class Condition_Collector:
                             'CStart Angle': [],
                             'Phototaxis to Tap Time': [],
                             'Correct CStart Percentage': [],
+                            'Total Correct CStarts': 0,
+                            'Total CStarts': 0,
                             'CStart Rel to Prevbout': [], 
                             'Taps Per Entry Into Arena': [],
                             'Total Time In Center': [],
                             'Barrier On Left Trajectories': [],
                             'Barrier On Right Trajectories': []}
         self.timerange = []
-        self.distance_thresh = 0
-        if big_barrier != ():
-            self.distance_thresh = big_barrier[0]
+        self.filter_index = 1
+        self.filter_range = [54, 200]
+        self.filter_data = False
+
         
 
     def update_ddict(self, escape_obj):
+
+        def wallfilter(xycoord):
+            distance_from_center = magvector(
+                [xycoord[0] - 640, xycoord[1] - 512])
+            if distance_from_center > 400:
+                return True
+            else:
+                return False
+            
         if escape_obj.condition != self.condition:
             raise Exception('input condition mistmatch with class')
         else:
 
-            initial_distances_to_barrier = [initial[0] for initial
+            # 1 for distance, 0 for angle. 
+            initial_filterval_to_barrier = [initial[self.filter_index] if initial != [] else np.nan for initial
                                             in escape_obj.initial_conditions]
-            trialfilter = [i if d < self.distance_thresh for i, d in enumerate(
-                initial_distances_to_barrier)]
 
+            print initial_filterval_to_barrier
+
+            if self.filter_data:
+                trialfilter = [i for i, d in enumerate(
+                    initial_filterval_to_barrier) if (
+                        self.filter_range[0] < d < self.filter_range[1])]
+            else:
+                trialfilter = range(len(escape_obj.xy_coords_by_trial))
+            
+
+            
             # MAKE THIS A LOOP BASED ON THE LENGTH OF THE XYCOORDINATE ARRAY
             # GET RID OF ALL LIST COMPREHENSIONS AND PASS IF THE INITIAL CONDITION IS NOT HIT. 
             
@@ -80,9 +102,18 @@ class Condition_Collector:
             non_nan_collisions = []
             
             for trial in range(len(escape_obj.xy_coords_by_trial)):
-                
-                if trial not in trialfilter:
+
+
+                # filter for specific trials that satisify filter conditions
+                # get rid of wall trials if you input data that contains wall distance
+                if (trial not in trialfilter):
                     continue
+                try:
+                    if wallfilter(
+                        escape_obj.initial_conditions[trial][4]):
+                        continue
+                except IndexError:
+                    pass
                 gf = escape_obj.pre_escape[trial]
                 try:
                     num_gfs = len(gf)
@@ -107,7 +138,7 @@ class Condition_Collector:
 
             if len(escape_obj.numgrayframes) != 0:
                 self.escape_data['Taps Per Entry Into Arena'].append(
-                    len(self.xy_coords_by_trial) / float(
+                    len(escape_obj.xy_coords_by_trial) / float(
                         len(escape_obj.numgrayframes)))
                 self.escape_data[
                     'Total Time In Center'] += escape_obj.numgrayframes.tolist()
@@ -121,11 +152,15 @@ class Condition_Collector:
             self.escape_data['Barrier On Left Trajectories'] += bl
             self.escape_data['Barrier On Right Trajectories'] += br
             last_xy = zip(last_x, last_y)
+
+            # This has to remove the radius of the barrier. 
             self.escape_data['Distance From Barrier After Escape'].append(
                 [magvector([xyl[0] - bxy[0], xyl[1] - bxy[1]]) for
                  xyl, bxy in zip(last_xy, barrier_xy_by_trial)])
             
             self.escape_data['Phototaxis to Tap Time'] += tap_times
+            self.escape_data['Total Correct CStarts'] += np.sum(non_nan_cstarts)
+            self.escape_data['Total CStarts'] += len(non_nan_cstarts)
             self.escape_data['Correct CStart Percentage'].append(np.sum(
                 non_nan_cstarts) / float(
                     len(non_nan_cstarts)))
@@ -525,10 +560,11 @@ class Escapes:
                 if makevid:
                     ha_vid.write(im_color)
                     thresh_vid.write(th)
-
+   
             vid.close()
             if makevid:
                 ha_vid.release()
+                thresh_vid.release()
 
             filt_heading_vec_list = filter_uvec(heading_vec_list, 1)
             heading_angles = [np.arctan2(vec[1], vec[0])
@@ -631,8 +667,9 @@ class Escapes:
                 xy[1][self.timerange[0]:self.timerange[0]+self.pre_c])
             fish_xy = np.array([int(fish_x), int(fish_y)])
             vec = barr_xy - fish_xy
-            mag = math.sqrt(np.sum([i*i for i in vec]))
-            self.initial_conditions.append([h_to_b, mag, ha_avg, ba_avg])
+            mag = magvector(vec) - (self.barrier_diam / 2)
+            self.initial_conditions.append([h_to_b, mag, ha_avg,
+                                            ba_avg, fish_xy])
 
     def trial_analyzer(self, plotc):
         self.get_orientation(True)
@@ -880,7 +917,9 @@ class Escapes:
             else:
                 return fishcont, x, y, th
     # this is a catch for missing the fish
-        if threshval < 15:
+    # original was 47 for areamin, 15 for threshval. 
+    #    if threshval < 15:
+        if threshval <= 10:
             if areamin * .75 < cv2.contourArea(contours[0]) < areamax:
                 fishcont, x, y = cont_distance(contours[0], xy_cent)
                 if math.isnan(x):
@@ -927,7 +966,10 @@ class Escapes:
             # make this a variable -- 25 should be added to timeframe multiple times. 
             for frame in range(self.timerange[1] - self.timerange[0]):
                 ha_adj = ha_adjusted.popleft()
-                im_color = threshvid.get_data(frame)
+                try:
+                    im_color = threshvid.get_data(frame)
+                except:
+                    continue
                 im = cv2.cvtColor(im_color, cv2.COLOR_BGR2GRAY)
                 im_rot, m, c = rotate_image(im, ha_adj)
                 im_rot_color = cv2.cvtColor(im_rot, cv2.COLOR_GRAY2RGB)
@@ -1207,9 +1249,12 @@ def plot_all_results(cond_collector_list):
         cond_data = cond_data_as_list.convert_to_nparrays()
         cond_data_arrays.append(cond_data)
         print cond_data
-        sb.tsplot(np.array(cond_data['Heading vs Barrier']),
-                  ax=axes[0], estimator=np.nanmean, color=cpal[cond_ind])
+        try: 
+            sb.tsplot(np.array(cond_data['Heading vs Barrier']),
+                      ax=axes[0], estimator=np.nanmean, color=cpal[cond_ind])
 
+        except RuntimeError:
+            print cond_data['Heading vs Barrier']
         # here add a counter and ask whether r_coords[0] or l_coords[0] are pos or neg.
         correct_moves = 0
         incorrect_moves = 0
@@ -1249,6 +1294,12 @@ def plot_all_results(cond_collector_list):
     barax[1, 2].set_title('Total Time Spent in Barrier Zone')
     barax[2, 0].set_title('Phototaxis to Tap Time')
     barax[2, 1].set_title('CStart Rel to Prevbout')
+    barax[2, 2].set_title('Pooled Correct CStart Percentage')
+    correct_cstart_xlocs = np.arange(len(cond_data_arrays))
+    correct_bars = [c['Total Correct CStarts'] for c in cond_data_arrays]
+    total_bars = [c['Total CStarts'] for c in cond_data_arrays]
+    barax[2, 2].bar(correct_cstart_xlocs, total_bars)
+    barax[2, 2].bar(correct_cstart_xlocs, correct_bars)
     sb.violinplot(data=[np.concatenate(bdist, axis=0) for bdist 
                         in [c['Distance From Barrier After Escape']
                         for c in cond_data_arrays]],  ax=axes[1])
@@ -1297,7 +1348,8 @@ def parse_obj_by_trial(drct_list, cond, mods):
     for drct in drct_list:
         fish_id = '/' + drct
         pl.ioff()
-        area_thresh = 47
+#        area_thresh = 47
+        area_thresh = 30
         esc_dir = os.getcwd() + fish_id
         print esc_dir
         plotcstarts = False
@@ -1391,6 +1443,8 @@ if __name__ == '__main__':
 
     # RED
 
+    mauthners = ['021320_1', '021320_2', '021320_3']
+
     four_b = ['030519_2', '022619_2', '030719_1', '030719_2',
               '030719_3', '032619_1', '032919_1', '040319_1',
               '040419_2', '040519_2', '041719_1', '041819_1',
@@ -1398,9 +1452,27 @@ if __name__ == '__main__':
               '102419_1', '102519_1', '110219_1', '110219_2',
               '032819_1', '030519_1']
 
+    # big_b = ['111319_1', '111219_1', '112019_5', '111219_3',
+    #          '111219_1', '111219_2', '111219_4', '111319_1',
+    #          '111319_2', '111319_3', '112019_1', '112019_4',
+    #          '112019_6', '112019_7', '112019_8']
+
+    big_b = ['111319_1', '111219_1', '112019_5', '111219_3',
+             '111219_1', '111219_2', '111219_4', '111319_1',
+              '112019_1', '112019_8']
+
+
+    # 111319_2 and _3 and 2019_4 and _6 do 20 trials in ~ 1-2 minutes. never gets a background and never moves. chuck it.
+    # if you want to get some of these trials you can write something that gets the original background. 
+    
+    # have a feeling that if there are throwout frames in the last couple,
+    # the videos stop short. there is also plenty of fish to be seen
+    # in the big barrier videos. unclear why they are lousy in the thresh. 
+
+    
     # '042719_1' get from the big computer
 #    hd = experiment_collector(four_b, ['l', 'd', 'n'], four_b)
-    hd = experiment_collector(four_b, ['l', 'd', 'n'])
+    hd = experiment_collector(mauthners, ['l', 'n'], mauthners)
 
     plot_all_results(hd)
 
