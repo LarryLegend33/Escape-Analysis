@@ -38,6 +38,8 @@ class Condition_Collector:
         self.escape_data = {'Heading vs Barrier': [],
                             'Distance From Barrier After Escape': [],
                             'Collision Percentage': [],
+                            'Total Escapes': 0,
+                            'Total Collisions': 0,
                             'CStart Latency': [],
                             'CStart Angle': [],
                             'Phototaxis to Tap Time': [],
@@ -50,11 +52,10 @@ class Condition_Collector:
                             'Barrier On Left Trajectories': [],
                             'Barrier On Right Trajectories': []}
         self.timerange = []
-        self.filter_index = 1
-        self.filter_range = [54, 200]
-        self.filter_data = False
-
-        
+        self.filter_index = 0
+        self.filter_range = [-np.pi, 0]
+        self.velocity_threshold = .1
+#        self.filter_range = []
 
     def update_ddict(self, escape_obj):
 
@@ -65,18 +66,26 @@ class Condition_Collector:
                 return True
             else:
                 return False
-            
+
+        def velocity_filter(xyrec):
+            dx = np.diff(xyrec[0][self.timerange[0]:self.timerange[1]])
+            dy = np.diff(xyrec[1][self.timerange[0]:self.timerange[1]])
+            velocities = [magvector([xd, yd]) for xd, yd in zip(dx, dy)]
+            if np.median(velocities) < self.velocity_threshold:
+                return False
+            else:
+                return True
+                
         if escape_obj.condition != self.condition:
             raise Exception('input condition mistmatch with class')
         else:
-
             # 1 for distance, 0 for angle. 
             initial_filterval_to_barrier = [initial[self.filter_index] if initial != [] else np.nan for initial
                                             in escape_obj.initial_conditions]
 
             print initial_filterval_to_barrier
 
-            if self.filter_data:
+            if not self.filter_range == []:
                 trialfilter = [i for i, d in enumerate(
                     initial_filterval_to_barrier) if (
                         self.filter_range[0] < d < self.filter_range[1])]
@@ -84,7 +93,6 @@ class Condition_Collector:
                 trialfilter = range(len(escape_obj.xy_coords_by_trial))
             
 
-            
             # MAKE THIS A LOOP BASED ON THE LENGTH OF THE XYCOORDINATE ARRAY
             # GET RID OF ALL LIST COMPREHENSIONS AND PASS IF THE INITIAL CONDITION IS NOT HIT. 
             
@@ -105,7 +113,18 @@ class Condition_Collector:
 
 
                 # filter for specific trials that satisify filter conditions
-                # get rid of wall trials if you input data that contains wall distance
+                # get rid of wall trials if you input data that contains wall distanc
+                if escape_obj.xy_coords_by_trial[trial][0] == []:
+                    if trial in trialfilter:
+                        trialfilter.remove(trial)
+
+                else:
+                    if not velocity_filter(
+                            escape_obj.xy_coords_by_trial[
+                                trial]):
+                        if trial in trialfilter:
+                            trialfilter.remove(trial)
+                        
                 if (trial not in trialfilter):
                     continue
                 try:
@@ -114,6 +133,9 @@ class Condition_Collector:
                         continue
                 except IndexError:
                     pass
+
+                
+                
                 gf = escape_obj.pre_escape[trial]
                 try:
                     num_gfs = len(gf)
@@ -142,6 +164,8 @@ class Condition_Collector:
                         len(escape_obj.numgrayframes)))
                 self.escape_data[
                     'Total Time In Center'] += escape_obj.numgrayframes.tolist()
+            self.escape_data['Total Collisions'] += np.sum(non_nan_collisions)
+            self.escape_data['Total Escapes'] += len(non_nan_collisions)
             self.escape_data['Collision Percentage'].append(
                 np.sum(non_nan_collisions) / float(
                     len(non_nan_collisions)))
@@ -919,6 +943,8 @@ class Escapes:
     # this is a catch for missing the fish
     # original was 47 for areamin, 15 for threshval. 
     #    if threshval < 15:
+
+    
         if threshval <= 10:
             if areamin * .75 < cv2.contourArea(contours[0]) < areamax:
                 fishcont, x, y = cont_distance(contours[0], xy_cent)
@@ -1264,7 +1290,7 @@ def plot_all_results(cond_collector_list):
                 if r_coords is not None:
                     axes2[cond_ind].plot(r_coords[0], r_coords[1],
                                          color=np.array(cpal[cond_ind]) * .5)
-                    if np.mean(r_coords[0]) < 0:
+                    if np.median(r_coords[0][20:]) < 0:
                         correct_moves += 1
                     else:
                         incorrect_moves += 1
@@ -1272,7 +1298,7 @@ def plot_all_results(cond_collector_list):
                     axes2[cond_ind].plot(l_coords[0], l_coords[1],
                                          color=cpal[cond_ind] * 1 / np.max(
                                              cpal[cond_ind]))
-                    if np.mean(l_coords[0]) > 0:
+                    if np.median(l_coords[0][20:]) > 0:
                         correct_moves += 1
                     else:
                         incorrect_moves += 1
@@ -1298,6 +1324,10 @@ def plot_all_results(cond_collector_list):
     correct_cstart_xlocs = np.arange(len(cond_data_arrays))
     correct_bars = [c['Total Correct CStarts'] for c in cond_data_arrays]
     total_bars = [c['Total CStarts'] for c in cond_data_arrays]
+    collision_bars = [c['Total Collisions'] for c in cond_data_arrays]
+    total_escape_bars = [c['Total Escapes'] for c in cond_data_arrays]
+    barax[1, 0].bar(correct_cstart_xlocs, total_escape_bars)
+    barax[1, 0].bar(correct_cstart_xlocs, collision_bars)
     barax[2, 2].bar(correct_cstart_xlocs, total_bars)
     barax[2, 2].bar(correct_cstart_xlocs, correct_bars)
     sb.violinplot(data=[np.concatenate(bdist, axis=0) for bdist 
@@ -1315,8 +1345,11 @@ def plot_all_results(cond_collector_list):
     collision_percentage_data = [clp[~np.isnan(clp)] for
                                  clp in [c['Collision Percentage']
                                          for c in cond_data_arrays]]
-    sb.barplot(data=collision_percentage_data, 
-               ax=barax[1, 0], estimator=np.nanmean)
+    
+
+    
+    # sb.barplot(data=collision_percentage_data, 
+    #            ax=barax[1, 0], estimator=np.nanmean)
     sb.boxplot(data=[2*clat[~np.isnan(clat)] for
                      clat in [c['CStart Latency']
                                  for c in cond_data_arrays]],
@@ -1348,8 +1381,8 @@ def parse_obj_by_trial(drct_list, cond, mods):
     for drct in drct_list:
         fish_id = '/' + drct
         pl.ioff()
-#        area_thresh = 47
-        area_thresh = 30
+        area_thresh = 47
+#        area_thresh = 30
         esc_dir = os.getcwd() + fish_id
         print esc_dir
         plotcstarts = False
@@ -1377,6 +1410,10 @@ def experiment_collector(drct_list, cond_list, *new_exps):
     for newexp_dirct in new_exps:
         fish_id = '/' + newexp_dirct
         pl.ioff()
+
+        # CHANGE THIS TO ALTER THE MINIMUM AREA THE FISH TAKES UP BEFORE BEING
+        # CALLED A FISH. 
+        
         area_thresh = 47
 #        esc_dir = os.getcwd() + fish_id
         esc_dir = '/Volumes/Escapes_HD/EscapeAnalysis' + fish_id
@@ -1443,8 +1480,14 @@ if __name__ == '__main__':
 
     # RED
 
-    mauthners = ['021320_1', '021320_2', '021320_3']
+    mauthners = ['021320_1', '021320_2', '021320_3', '022120_1', '022120_2',
+                 '022120_3']
 
+
+#    mauthners = ['022120_1']
+
+
+    
     four_b = ['030519_2', '022619_2', '030719_1', '030719_2',
               '030719_3', '032619_1', '032919_1', '040319_1',
               '040419_2', '040519_2', '041719_1', '041819_1',
@@ -1459,8 +1502,10 @@ if __name__ == '__main__':
 
     big_b = ['111319_1', '111219_1', '112019_5', '111219_3',
              '111219_1', '111219_2', '111219_4', '111319_1',
-              '112019_1', '112019_8']
+             '112019_1', '112019_8']
 
+
+    
 
     # 111319_2 and _3 and 2019_4 and _6 do 20 trials in ~ 1-2 minutes. never gets a background and never moves. chuck it.
     # if you want to get some of these trials you can write something that gets the original background. 
@@ -1471,9 +1516,11 @@ if __name__ == '__main__':
 
     
     # '042719_1' get from the big computer
-#    hd = experiment_collector(four_b, ['l', 'd', 'n'], four_b)
-    hd = experiment_collector(mauthners, ['l', 'n'], mauthners)
+    hd = experiment_collector(mauthners, ['l', 'n'])
+#    hd = experiment_collector(mauthners, ['l', 'n'])
+#    hd = experiment_collector(mauthners, ['l', 'n'])
 
+#    hd_fourb = experiment_collector(four_b, ['l'])
     plot_all_results(hd)
 
     # GIANT RED BARRIER
