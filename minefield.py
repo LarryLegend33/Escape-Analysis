@@ -38,10 +38,11 @@ class Condition_Collector:
         self.escape_data = {'Heading vs Barrier': [],
                             'Distance From Barrier After Escape': [],
                             'Collision Percentage': [],
-                            'Total Escapes': 0,
+                            'Total Valid Trials': 0,
                             'Total Collisions': 0,
                             'CStart Latency': [],
                             'CStart Angle': [],
+                            'No Escape': 0,
                             'Phototaxis to Tap Time': [],
                             'Correct CStart Percentage': [],
                             'Total Correct CStarts': 0,
@@ -53,9 +54,11 @@ class Condition_Collector:
                             'Barrier On Right Trajectories': []}
         self.timerange = []
         self.filter_index = 0
-        self.filter_range = [-np.pi, 0]
-        self.velocity_threshold = .1
-#        self.filter_range = []
+        self.filter_range = []
+        self.velocity_threshold = 3
+        self.pre_c = 10
+        self.all_velocities = []
+
 
     def update_ddict(self, escape_obj):
 
@@ -68,10 +71,11 @@ class Condition_Collector:
                 return False
 
         def velocity_filter(xyrec):
-            dx = np.diff(xyrec[0][self.timerange[0]:self.timerange[1]])
-            dy = np.diff(xyrec[1][self.timerange[0]:self.timerange[1]])
+            dx = np.diff(xyrec[0][self.timerange[0]+self.pre_c:self.timerange[1]])
+            dy = np.diff(xyrec[1][self.timerange[0]+self.pre_c:self.timerange[1]])
             velocities = [magvector([xd, yd]) for xd, yd in zip(dx, dy)]
-            if np.median(velocities) < self.velocity_threshold:
+            self.all_velocities.append(velocities)
+            if np.max(velocities) < self.velocity_threshold:
                 return False
             else:
                 return True
@@ -117,16 +121,18 @@ class Condition_Collector:
                 if escape_obj.xy_coords_by_trial[trial][0] == []:
                     if trial in trialfilter:
                         trialfilter.remove(trial)
-
-                else:
+                        
+                if trial in trialfilter:
+                    self.escape_data['Total Valid Trials'] += 1
                     if not velocity_filter(
                             escape_obj.xy_coords_by_trial[
                                 trial]):
-                        if trial in trialfilter:
+                            self.escape_data['No Escape'] += 1
                             trialfilter.remove(trial)
-                        
+                    
                 if (trial not in trialfilter):
                     continue
+                
                 try:
                     if wallfilter(
                         escape_obj.initial_conditions[trial][4]):
@@ -134,8 +140,6 @@ class Condition_Collector:
                 except IndexError:
                     pass
 
-                
-                
                 gf = escape_obj.pre_escape[trial]
                 try:
                     num_gfs = len(gf)
@@ -165,11 +169,10 @@ class Condition_Collector:
                 self.escape_data[
                     'Total Time In Center'] += escape_obj.numgrayframes.tolist()
             self.escape_data['Total Collisions'] += np.sum(non_nan_collisions)
-            self.escape_data['Total Escapes'] += len(non_nan_collisions)
             self.escape_data['Collision Percentage'].append(
                 np.sum(non_nan_collisions) / float(
                     len(non_nan_collisions)))
-            self.escape_data['CStart Angle'] += cstart_angles            
+            self.escape_data['CStart Angle'] += np.abs(cstart_angles).tolist()
             br, bl = escape_obj.escapes_vs_barrierloc(0, trialfilter)
             self.escape_data['Heading vs Barrier'] += escape_obj.h_vs_b_plot(
                 0, trialfilter)
@@ -225,7 +228,6 @@ class Escapes:
         elif exp_type in ['v', 'i']:
             self.numgrayframes = []
             bstruct_and_br_label = 'v'
-
         if exp_type == 'n':
             try:
                 self.numgrayframes = np.loadtxt(
@@ -439,7 +441,7 @@ class Escapes:
         self.collisions = []
         
         def collision(xb, yb, bd, x, y):
-            proximity_val = 5
+            proximity_val = 6
             vec = np.sqrt((x - xb)**2 + (y - yb)**2)
             if math.isnan(x):
                 return False
@@ -1317,19 +1319,23 @@ def plot_all_results(cond_collector_list):
     barax[0, 1].set_title('CStart Latency (ms)')
     barax[0, 2].set_title('CStart Angle (deg)')
     barax[1, 1].set_title('Probability of Tap Per Arena Entry')
-    barax[1, 2].set_title('Total Time Spent in Barrier Zone')
+   # barax[1, 2].set_title('Total Time Spent in Barrier Zone')
+    barax[1, 2].set_title('Number of Duds')
     barax[2, 0].set_title('Phototaxis to Tap Time')
     barax[2, 1].set_title('CStart Rel to Prevbout')
     barax[2, 2].set_title('Pooled Correct CStart Percentage')
-    correct_cstart_xlocs = np.arange(len(cond_data_arrays))
+    xlocs = np.arange(len(cond_data_arrays))
     correct_bars = [c['Total Correct CStarts'] for c in cond_data_arrays]
     total_bars = [c['Total CStarts'] for c in cond_data_arrays]
+    dud_bars = [c['No Escape'] for c in cond_data_arrays]
     collision_bars = [c['Total Collisions'] for c in cond_data_arrays]
-    total_escape_bars = [c['Total Escapes'] for c in cond_data_arrays]
-    barax[1, 0].bar(correct_cstart_xlocs, total_escape_bars)
-    barax[1, 0].bar(correct_cstart_xlocs, collision_bars)
-    barax[2, 2].bar(correct_cstart_xlocs, total_bars)
-    barax[2, 2].bar(correct_cstart_xlocs, correct_bars)
+    total_valid_bars = [c['Total Valid Trials'] for c in cond_data_arrays]
+    barax[1, 0].bar(xlocs, total_bars)
+    barax[1, 0].bar(xlocs, collision_bars)
+    barax[2, 2].bar(xlocs, total_bars)
+    barax[2, 2].bar(xlocs, correct_bars)
+    barax[1, 2].bar(xlocs, total_valid_bars)
+    barax[1, 2].bar(xlocs, dud_bars)
     sb.violinplot(data=[np.concatenate(bdist, axis=0) for bdist 
                         in [c['Distance From Barrier After Escape']
                         for c in cond_data_arrays]],  ax=axes[1])
@@ -1345,9 +1351,6 @@ def plot_all_results(cond_collector_list):
     collision_percentage_data = [clp[~np.isnan(clp)] for
                                  clp in [c['Collision Percentage']
                                          for c in cond_data_arrays]]
-    
-
-    
     # sb.barplot(data=collision_percentage_data, 
     #            ax=barax[1, 0], estimator=np.nanmean)
     sb.boxplot(data=[2*clat[~np.isnan(clat)] for
@@ -1363,10 +1366,14 @@ def plot_all_results(cond_collector_list):
                                       for c in cond_data_arrays]]
     sb.boxplot(data=taps_per_entry,
                ax=barax[1, 1])
-    sb.boxplot(data=[dur[~np.isnan(dur)] for
-                     dur in [c['Total Time In Center']
-                             for c in cond_data_arrays]],
-               ax=barax[1, 2])
+    # sb.boxplot(data=[dur[~np.isnan(dur)] for
+    #                  dur in [c['Total Time In Center']
+    #                          for c in cond_data_arrays]],
+    #            ax=barax[1, 2])
+
+    
+
+    
     sb.boxplot(data=[ptax[~np.isnan(ptax)] for
                      ptax in [c['Phototaxis to Tap Time']
                               for c in cond_data_arrays]],
@@ -1482,6 +1489,10 @@ if __name__ == '__main__':
 
     mauthners = ['021320_1', '021320_2', '021320_3', '022120_1', '022120_2',
                  '022120_3']
+#    mauthners = ['021320_1', '021320_2', '021320_3']
+                
+ #   mauthners = ['022120_1', '022120_2',
+  #               '022120_3']
 
 
 #    mauthners = ['022120_1']
@@ -1516,10 +1527,13 @@ if __name__ == '__main__':
 
     
     # '042719_1' get from the big computer
-    hd = experiment_collector(mauthners, ['l', 'n'])
 #    hd = experiment_collector(mauthners, ['l', 'n'])
-#    hd = experiment_collector(mauthners, ['l', 'n'])
+#    hd = experiment_collector(four_b, ['l', 'd', 'n'])
+#    hd = experiment_collector(mauthners, ['l', 'n'], mauthners)
 
+    hd = experiment_collector(four_b, ['l', 'n'])
+
+    
 #    hd_fourb = experiment_collector(four_b, ['l'])
     plot_all_results(hd)
 
