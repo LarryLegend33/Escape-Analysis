@@ -16,11 +16,13 @@ from toolz.itertoolz import sliding_window, partition
 from scipy.ndimage import gaussian_filter
 from scipy.signal import argrelmin, argrelmax, argrelextrema
 from astropy.convolution import convolve, Gaussian1DKernel
+import itertools as itz
+import pandas as pd
 from matplotlib.colors import ListedColormap, BoundaryNorm
 from matplotlib.image import AxesImage
 from matplotlib.colors import Colormap
 import pdb
-from itertools import izip_longest
+import matplotlib
 
 
 # This is the main class for this program.
@@ -31,6 +33,9 @@ from itertools import izip_longest
 # orientation relative to a barrier, finding the timing and angle
 # of the c-start by calculating the exact moment of the tap,
 # and plotting the escape trajectory relative to a barrier position
+
+matplotlib.rcParams['pdf.fonttype'] = 42
+
 
 class Condition_Collector:
     def __init__(self, condition):
@@ -53,12 +58,11 @@ class Condition_Collector:
                             'Barrier On Left Trajectories': [],
                             'Barrier On Right Trajectories': []}
         self.timerange = []
-        self.filter_index = 0
-        self.filter_range = []
+        self.filter_index = 1
+        self.filter_range = [90, 200]
         self.velocity_threshold = 3
         self.pre_c = 10
         self.all_velocities = []
-
 
     def update_ddict(self, escape_obj):
 
@@ -87,7 +91,7 @@ class Condition_Collector:
             initial_filterval_to_barrier = [initial[self.filter_index] if initial != [] else np.nan for initial
                                             in escape_obj.initial_conditions]
 
-            print initial_filterval_to_barrier
+            print(initial_filterval_to_barrier)
 
             if not self.filter_range == []:
                 trialfilter = [i for i, d in enumerate(
@@ -112,34 +116,26 @@ class Condition_Collector:
             non_nan_cstarts_rel_to_prevbout = []
             cstart_angles = []
             non_nan_collisions = []
-            
+            # filter for specific trials that satisify filter conditions
+            # get rid of wall trials if you input data that contains wall
             for trial in range(len(escape_obj.xy_coords_by_trial)):
-
-
-                # filter for specific trials that satisify filter conditions
-                # get rid of wall trials if you input data that contains wall distanc
                 if escape_obj.xy_coords_by_trial[trial][0] == []:
                     if trial in trialfilter:
                         trialfilter.remove(trial)
-                        
                 if trial in trialfilter:
                     self.escape_data['Total Valid Trials'] += 1
                     if not velocity_filter(
                             escape_obj.xy_coords_by_trial[
                                 trial]):
-                            self.escape_data['No Escape'] += 1
-                            trialfilter.remove(trial)
-                    
+                        self.escape_data['No Escape'] += 1
+                        trialfilter.remove(trial)
                 if (trial not in trialfilter):
                     continue
-                
                 try:
-                    if wallfilter(
-                        escape_obj.initial_conditions[trial][4]):
+                    if wallfilter(escape_obj.initial_conditions[trial][4]):
                         continue
                 except IndexError:
                     pass
-
                 gf = escape_obj.pre_escape[trial]
                 try:
                     num_gfs = len(gf)
@@ -198,11 +194,9 @@ class Condition_Collector:
                 'CStart Latency'] += np.array(escape_obj.stim_init_times)[trialfilter][
                     np.array(escape_obj.stim_times_accurate).astype(np.bool)[trialfilter]].tolist()
 
-
-            
     def convert_to_nparrays(self):
         np_array_dict = {}
-        for ky, it in self.escape_data.iteritems():
+        for ky, it in self.escape_data.items():
             np_array_dict[ky] = np.array(it)
         return np_array_dict
 
@@ -232,35 +226,35 @@ class Escapes:
             try:
                 self.numgrayframes = np.loadtxt(
                     directory + '/numframesgray_n.txt',
-                    dtype='string').astype(np.int)
+                    dtype='str').astype(np.int)
                 self.barrier_file = np.loadtxt(
                     directory + '/barrierstruct_n.txt',
-                    dtype='string')
+                    dtype='str')
             # Will throw IO error for n trials in virtual settings
             except IOError:
                 self.numgrayframes = []
                 self.barrier_file = np.loadtxt(
                     directory + '/barrierstruct_v.txt',
-                    dtype='string')
+                    dtype='str')
 
         else:
             self.barrier_file = np.loadtxt(
                 directory + '/barrierstruct_' + bstruct_and_br_label + '.txt',
-                dtype='string')
+                dtype='str')
 
         if exp_type == 'l':
             self.numgrayframes = np.loadtxt(
                 directory + '/numframesgray_' + bstruct_and_br_label + '.txt',
-                dtype='string').astype(np.int)
+                dtype='str').astype(np.int)
         elif exp_type == 'd':
             self.numgrayframes = np.loadtxt(
                 directory + '/numframesgray_dark.txt',
-                dtype='string').astype(np.int)
+                dtype='str').astype(np.int)
             
         self.barrier_coordinates = []
         self.barrier_diam = 0
         self.barrier_xy_by_trial = []
-        print self.directory
+        print(self.directory)
         background_files = sorted(
             [(directory + '/' + f_id, int(f_id[11:13]), f_id[-5:-4])
              for f_id in os.listdir(directory)
@@ -277,17 +271,17 @@ class Escapes:
                                    if f_id[0:15] == 'fishcoords_gray'
                                    and f_id[-5:-4] == exp_type])
         self.pre_escape = [
-            np.loadtxt(pe, dtype='string') for pe in pre_escape_files]
+            np.loadtxt(pe, dtype='str') for pe in pre_escape_files]
         self.pre_escape_bouts = []
         xy_files = sorted([directory + '/' + f_id
                            for f_id in os.listdir(directory)
                            if f_id[0:4] == 'tapr' and f_id[-5:-4] == exp_type])
-        self.xy_escapes = [np.loadtxt(xyf, dtype='string') for xyf in xy_files]
+        self.xy_escapes = [np.loadtxt(xyf, dtype='str') for xyf in xy_files]
         stim_files = sorted([directory + '/' + f_id
                              for f_id in os.listdir(directory)
                              if f_id[0:4] == 'stim'
                              and f_id[-5:-4] == exp_type])
-        self.stim_data = [np.loadtxt(st, dtype='string') for st in stim_files]
+        self.stim_data = [np.loadtxt(st, dtype='str') for st in stim_files]
         self.movie_id = sorted([directory + '/' + f_id
                                 for f_id in os.listdir(directory)
                                 if (f_id[-5:] == exp_type+'.AVI'
@@ -333,7 +327,8 @@ class Escapes:
         
 #        h_vs_b_mod = [np.abs(hb_trial) for hb_trial in self.h_vs_b_by_trial]
         if plot_fish:
-            sb.tsplot(h_vs_b_mod)
+            df_hvb = pd.DataFrame(h_vs_b_mod).melt()
+            sb.lineplot(data=df_hvb)
             pl.show()
         else:
             return h_vs_b_mod
@@ -367,7 +362,7 @@ class Escapes:
 # and used to ignore video frames from missed indices.
         
     def get_xy_coords(self):
-        print self.condition
+        print(self.condition)
         for filenum, xy_file in enumerate(self.xy_escapes):
             xcoords = []
             ycoords = []
@@ -375,7 +370,7 @@ class Escapes:
                 x, y = x_and_y_coord(coordstring)
                 xcoords.append(x)
                 ycoords.append(y)
-            print filenum
+            print(filenum)
             xc_trial, yc_trial, missed_inds = outlier_filter(xcoords,
                                                              ycoords, [])
             self.xy_coords_by_trial.append([xc_trial,
@@ -390,7 +385,7 @@ class Escapes:
 # using when the LED reaches steady state.
 # The stimulus itself is 200ms long, and lasts for ~100 frames.
 # The steady state should be taken around 50 frames into the stimulus.
-            
+
     def get_stim_times(self, plot_stim):
         for stim_file in self.stim_data:
             stimdata = np.genfromtxt(stim_file)
@@ -410,8 +405,6 @@ class Escapes:
             else:
                 self.stim_init_times.append(stim_init[0]-self.timerange[0])
                 self.stim_times_accurate.append(1)
-
-        
 
 # finds which barrier in the barrier file the fish is escaping from
 # using vector distance.
@@ -515,7 +508,6 @@ class Escapes:
         else:
             return candidate_backgrounds[0][0]
                                 
-
     def get_orientation(self, makevid):
         for trial, (vid_file, xy) in enumerate(
                 zip(self.movie_id, self.xy_coords_by_trial)):
@@ -606,7 +598,6 @@ class Escapes:
             self.ha_in_timeframe.append(norm_orientation)
             self.contours_by_trial.append(contour_list)
 
-
 # this function calculates a vector from the fish's position to the
 # barrier it is escaping
 
@@ -672,7 +663,6 @@ class Escapes:
 # (barrier is left of the fish), while ha to the left of
 # the barrier are positive (barrier is on the right of the fish).
 
-
 # this function finds the state of the fish in the moment
 # before the tap stimulus arrives. these conditions are used
 # for finding heading to the barrier and the cstart
@@ -705,7 +695,6 @@ class Escapes:
         self.body_curl()
         self.find_cstart(plotc)
         self.collision_course()
-
 
 # this function splits up escapes by whether the barrier was to the
 # right or left of the fish at the onset of the tap.
@@ -844,7 +833,7 @@ class Escapes:
                 else:
                     bout_angles.append(-1*a)
             if bout_angles:
-                print bout_angles[-1]
+                print(bout_angles[-1])
             self.pre_escape_bouts.append(bout_angles)
 
             
@@ -906,8 +895,6 @@ class Escapes:
                 self.cstart_rel_to_barrier.append(np.nan)
                 self.cstart_rel_to_last_bout.append(np.nan)
 
-
-                
 # contourfinder dynamically thresholds a background subtracted image
 # until a criteria of contour size and proximity to the fish is reached for a
 # contour. the function is recursive in that it continues to lower the
@@ -945,9 +932,11 @@ class Escapes:
     # this is a catch for missing the fish
     # original was 47 for areamin, 15 for threshval. 
     #    if threshval < 15:
-
     
         if threshval <= 10:
+            if not contours:
+                return np.array([]), float('NaN'), float('NaN'), np.zeros(
+                    [im.shape[0], im.shape[1]]).astype(np.uint8)
             if areamin * .75 < cv2.contourArea(contours[0]) < areamax:
                 fishcont, x, y = cont_distance(contours[0], xy_cent)
                 if math.isnan(x):
@@ -1001,20 +990,12 @@ class Escapes:
                 im = cv2.cvtColor(im_color, cv2.COLOR_BGR2GRAY)
                 im_rot, m, c = rotate_image(im, ha_adj)
                 im_rot_color = cv2.cvtColor(im_rot, cv2.COLOR_GRAY2RGB)
-                
-                # # refinding here is easier than storing the contour then rotating both the image and the contour
                 body_unrotated = self.contours_by_trial[trial][frame]
                 body = rotate_contour(im, ha_adj, body_unrotated)
-                # if self.condition == 'd' and trial == 2 and math.isnan(ha_adj):
-                #     print ha_adj
-                #     print body
-                #     print("ha messed")
                 if body.shape[0] == 0:
                     all_angles.append([])
                     cstart_vid.write(im_rot_color)
                     continue
-# now find the point on the contour that has the smallest y coord (i.e. is closest to the top). may be largest y coord?
-
                 body_perimeter = cv2.arcLength(body, True)
                 highest_pt = np.argmin([bp[0][1] for bp in body])
                 body = np.concatenate([body[highest_pt:], body[0:highest_pt]])
@@ -1069,7 +1050,6 @@ class Escapes:
                     angles.append(np.degrees(ang))
                 cnt += 1
                 all_angles.append(angles)
-        
             cstart_vid.release()
             threshvid.close()
             self.tailangle_sums.append([np.nansum(i) for i in all_angles])
@@ -1138,8 +1118,8 @@ def clear_frame(ax=None):
     for spine in ax.spines.itervalues():
         spine.set_visible(False)
 
-
 #this forces the coordinate system to be facing upward at 0 rad.
+
 
 def rotate_coords(coords, angle):
     angle = angle + np.pi / 2
@@ -1171,8 +1151,6 @@ def outlier_filter(xcoords, ycoords, missed_inds):
             new_x.append(crds[0])
             new_y.append(crds[1])
         else:
-#            print i
-#            print vmag
             missed_inds.append(i+1)
             new_x.append(new_x[-1])
             new_y.append(new_y[-1])
@@ -1192,11 +1170,9 @@ def filter_list(templist):
 
 def filter_uvec(vecs, sd):
     gkern = Gaussian1DKernel(sd)
-    filt_sd = sd
     npvecs = np.array(vecs)
     filt_vecs = np.copy(npvecs)
     for i in range(npvecs[0].shape[0]):
-#        filt_vecs[:, i] = gaussian_filter(npvecs[:, i], filt_sd)
         filt_vecs[:, i] = convolve(npvecs[:, i], gkern)
     return filt_vecs
 
@@ -1276,34 +1252,34 @@ def plot_all_results(cond_collector_list):
     for cond_ind, cond_data_as_list in enumerate(cond_collector_list):
         cond_data = cond_data_as_list.convert_to_nparrays()
         cond_data_arrays.append(cond_data)
-        print cond_data
-        try: 
-            sb.tsplot(np.array(cond_data['Heading vs Barrier']),
-                      ax=axes[0], estimator=np.nanmean, color=cpal[cond_ind])
-
+        print(cond_data)
+        try:
+            df_conddata = pd.DataFrame(
+                np.array(cond_data['Heading vs Barrier'])).melt()
+            sb.lineplot(data=df_conddata,
+                        ax=axes[0], estimator=np.nanmean, color=cpal[cond_ind])
         except RuntimeError:
-            print cond_data['Heading vs Barrier']
-        # here add a counter and ask whether r_coords[0] or l_coords[0] are pos or neg.
+            print(cond_data['Heading vs Barrier'])
         correct_moves = 0
         incorrect_moves = 0
-        for r_coords, l_coords in izip_longest(
+        for r_coords, l_coords in itz.zip_longest(
                 cond_data['Barrier On Left Trajectories'],
                 cond_data['Barrier On Right Trajectories']):
-                if r_coords is not None:
-                    axes2[cond_ind].plot(r_coords[0], r_coords[1],
-                                         color=np.array(cpal[cond_ind]) * .5)
-                    if np.median(r_coords[0][20:]) < 0:
-                        correct_moves += 1
-                    else:
-                        incorrect_moves += 1
-                if l_coords is not None:
-                    axes2[cond_ind].plot(l_coords[0], l_coords[1],
-                                         color=cpal[cond_ind] * 1 / np.max(
-                                             cpal[cond_ind]))
-                    if np.median(l_coords[0][20:]) > 0:
-                        correct_moves += 1
-                    else:
-                        incorrect_moves += 1
+            if r_coords is not None:
+                axes2[cond_ind].plot(r_coords[0], r_coords[1],
+                                     color=np.array(cpal[cond_ind]) * .5)
+                if np.median(r_coords[0][20:]) < 0:
+                    correct_moves += 1
+                else:
+                    incorrect_moves += 1
+            if l_coords is not None:
+                axes2[cond_ind].plot(l_coords[0], l_coords[1],
+                                     color=cpal[cond_ind] * 1 / np.max(
+                                         cpal[cond_ind]))
+                if np.median(l_coords[0][20:]) > 0:
+                    correct_moves += 1
+                else:
+                    incorrect_moves += 1
 
         axes2[cond_ind].text(
             -95, -80,
@@ -1355,7 +1331,7 @@ def plot_all_results(cond_collector_list):
     #            ax=barax[1, 0], estimator=np.nanmean)
     sb.boxplot(data=[2*clat[~np.isnan(clat)] for
                      clat in [c['CStart Latency']
-                                 for c in cond_data_arrays]],
+                              for c in cond_data_arrays]],
                ax=barax[0, 1])
     sb.boxplot(data=[cang[~np.isnan(cang)] for
                      cang in [c['CStart Angle']
@@ -1371,9 +1347,6 @@ def plot_all_results(cond_collector_list):
     #                          for c in cond_data_arrays]],
     #            ax=barax[1, 2])
 
-    
-
-    
     sb.boxplot(data=[ptax[~np.isnan(ptax)] for
                      ptax in [c['Phototaxis to Tap Time']
                               for c in cond_data_arrays]],
@@ -1382,16 +1355,16 @@ def plot_all_results(cond_collector_list):
     pl.show()
 
 
-    
 def parse_obj_by_trial(drct_list, cond, mods):
-    os.chdir('/Users/nightcrawler2/Escape-Analysis/')
+    os.chdir('/Volumes/Esc_and_2P/Escape_Results/')
+#    os.chdir('/Users/nightcrawler2/Escape-Analysis/')
     for drct in drct_list:
         fish_id = '/' + drct
         pl.ioff()
         area_thresh = 47
 #        area_thresh = 30
         esc_dir = os.getcwd() + fish_id
-        print esc_dir
+        print(esc_dir)
         plotcstarts = False
         escape_obj = Escapes(cond, esc_dir, area_thresh, 1)
         escape_obj.exporter()
@@ -1413,7 +1386,7 @@ def experiment_collector(drct_list, cond_list, *new_exps):
     cond_collector_list = [Condition_Collector(cl) for cl in cond_list]
     if new_exps != ():
         new_exps = new_exps[0]
-    os.chdir('/Users/nightcrawler2/Escape-Analysis/')
+    os.chdir('/Volumes/Esc_and_2P/Escape_Results')
     for newexp_dirct in new_exps:
         fish_id = '/' + newexp_dirct
         pl.ioff()
@@ -1423,8 +1396,8 @@ def experiment_collector(drct_list, cond_list, *new_exps):
         
         area_thresh = 47
 #        esc_dir = os.getcwd() + fish_id
-        esc_dir = '/Volumes/Escapes_HD/EscapeAnalysis' + fish_id
-        print esc_dir
+        esc_dir = '/Volumes/Esc_and_2P/Escape_Results' + fish_id
+        print(esc_dir)
         plotcstarts = False
         for cond in cond_list:
             try:
@@ -1436,8 +1409,8 @@ def experiment_collector(drct_list, cond_list, *new_exps):
 # CATCH FOR SPLITTING ACCORDING TO TRIAL GOES HERE. 
             
     for drct in drct_list:
-        drct = '/Volumes/Escapes_HD/EscapeAnalysis/' + drct
-        print drct
+        drct = '/Volumes/Esc_and_2P/Escape_Results/' + drct
+        print(drct)
         for cond_ind, cond_collector in enumerate(cond_collector_list):
             try:
                 print('loading cond ' + str(cond_ind+1) + ' trials')
@@ -1497,7 +1470,6 @@ if __name__ == '__main__':
 
 #    mauthners = ['022120_1']
 
-
     
     four_b = ['030519_2', '022619_2', '030719_1', '030719_2',
               '030719_3', '032619_1', '032919_1', '040319_1',
@@ -1530,12 +1502,15 @@ if __name__ == '__main__':
 #    hd = experiment_collector(mauthners, ['l', 'n'])
 #    hd = experiment_collector(four_b, ['l', 'd', 'n'])
 #    hd = experiment_collector(mauthners, ['l', 'n'], mauthners)
+ #   big_b_ec = experiment_collector(big_b, ['l', 'l'])
 
-    hd = experiment_collector(four_b, ['l', 'n'])
+#    four_b_ec = experiment_collector(four_b, ['l', 'd', 'n'])
 
+    big_b_ec = experiment_collector(big_b, ['l', 'l'])
+    plot_all_results(big_b_ec)
     
-#    hd_fourb = experiment_collector(four_b, ['l'])
-    plot_all_results(hd)
+
+
 
     # GIANT RED BARRIER
 

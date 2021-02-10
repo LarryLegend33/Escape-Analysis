@@ -19,11 +19,11 @@ from scipy.ndimage import gaussian_filter, uniform_filter
 
 
 
-def proximity_calculator(nav_list, condition):
+def proximity_calculator(nav_list, condition, b_color, *value_range):
     coords_wrt_barrier = []
     nav_object_collection = []
     for nl_item in nav_list:
-        nav_directory = os.getcwd() + '/' + nl_item
+        nav_directory = '/Volumes/Escapes_HD/EscapeAnalysis/' + nl_item
         nav_object = Navigator(condition, nav_directory)
         nav_object.norm_coords_to_barrier()
         coords_wrt_barrier += nav_object.coords_wrt_closest_barrier
@@ -35,7 +35,7 @@ def proximity_calculator(nav_list, condition):
     ymax = np.nanmax(coords_wrt_barrier[:, 1])
     ymin = np.nanmin(coords_wrt_barrier[:, 1])
 
-    scale_factor = 150
+    scale_factor = 300
     barrier_location = np.array([-xmin, -ymin])
     
     # xmax = scale_factor
@@ -51,21 +51,26 @@ def proximity_calculator(nav_list, condition):
 
     fig = pl.figure()
     ax = fig.add_subplot(111)
-    filt_proxmat = gaussian_filter(proximity_matrix, 2)
+    # was at 2 for all original figures
+    filt_proxmat = gaussian_filter(proximity_matrix, 5)
  #   filt_proxmat = proximity_matrix
-    min_proxmat = np.min(filt_proxmat[filt_proxmat > 0])
-    max_proxmat = np.max(filt_proxmat)
+
+    if value_range != ():
+        min_proxmat, max_proxmat = value_range[0]
+    else:
+        min_proxmat = np.min(filt_proxmat[filt_proxmat > 0])
+        max_proxmat = np.max(filt_proxmat)
  
-    sb.heatmap(filt_proxmat, center=(max_proxmat - min_proxmat) / 2)
+    sb.heatmap(filt_proxmat, center=(max_proxmat - min_proxmat) / 2, cmap='viridis')
 #    sb.heatmap(proximity_matrix)
-    barrier = pl.Circle(barrier_location,
-                        nav_object.barrier_diams[0] / 2, ec='None', fc='r')
     bounds = pl.Circle(barrier_location,
                        scale_factor, ec='k', fc='None')
-    ax.add_artist(barrier)
+    barrier = pl.Circle(barrier_location,
+                        nav_object.barrier_diams[0] / 2, ec='None', fc=b_color)
     ax.add_artist(bounds)
+    ax.add_artist(barrier)
     pl.show()
-    return nav_object_collection
+    return nav_object_collection, [min_proxmat, max_proxmat]
 
 class Navigator:
     
@@ -471,9 +476,16 @@ def midpoint_proximity(crossings, bloc, bdiams, lines):
 
 
 exp_type = 'b'
-directories = ['052319_2', '052419_5', '052319_6']
+#directories = ['052319_2', '052419_5', '052319_6']
+red_b = ['061419_1', '061419_2', '061419_3',
+         '061419_4', '061419_5', '061819_1']
 
-navs = proximity_calculator(directories, exp_type)
+white_b = ['061319_4', '061319_5', '061319_6',
+           '061319_7', '061319_8', '061319_9']
+
+navs_white = proximity_calculator(white_b, exp_type, [1, 1, 1])
+navs_red = proximity_calculator(red_b, exp_type, [1, 0, 0], navs_white[1])
+
 
 
 
