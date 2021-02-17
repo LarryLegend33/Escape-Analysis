@@ -36,6 +36,14 @@ import matplotlib
 
 matplotlib.rcParams['pdf.fonttype'] = 42
 
+def tsplot(data, ax, **kw):
+    x = np.arange(data.shape[1])
+    est = np.mean(data, axis=0)
+    sd = np.std(data, axis=0)
+    cis = (est - sd, est + sd)
+    ax.fill_between(x, cis[0], cis[1], alpha=0.2, **kw)
+    ax.plot(x, est, **kw)
+    ax.margins(x=0)
 
 class Condition_Collector:
     def __init__(self, condition):
@@ -52,15 +60,21 @@ class Condition_Collector:
                             'Correct CStart Percentage': [],
                             'Total Correct CStarts': 0,
                             'Total CStarts': 0,
-                            'CStart Rel to Prevbout': [], 
+                            'CStart Rel to Prevbout': [],
                             'Taps Per Entry Into Arena': [],
                             'Total Time In Center': [],
                             'Barrier On Left Trajectories': [],
                             'Barrier On Right Trajectories': []}
         self.timerange = []
         self.filter_index = 1
-        self.filter_range = [90, 200]
-        self.velocity_threshold = 3
+
+        # THIS IS THE PROBLEM -- FILTER RANGE MUST BE FOR DISTANCE TO BARRIER!
+        # WAS PROBABLY USING THIS FOR THE BIGGEST BARRIERS.
+
+        
+#        self.filter_range = [90, 200]
+        self.filter_range = []
+        self.velocity_threshold = 0
         self.pre_c = 10
         self.all_velocities = []
 
@@ -91,14 +105,12 @@ class Condition_Collector:
             initial_filterval_to_barrier = [initial[self.filter_index] if initial != [] else np.nan for initial
                                             in escape_obj.initial_conditions]
 
-            print(initial_filterval_to_barrier)
-
             if not self.filter_range == []:
                 trialfilter = [i for i, d in enumerate(
                     initial_filterval_to_barrier) if (
                         self.filter_range[0] < d < self.filter_range[1])]
             else:
-                trialfilter = range(len(escape_obj.xy_coords_by_trial))
+                trialfilter = list(range(len(escape_obj.xy_coords_by_trial)))
             
 
             # MAKE THIS A LOOP BASED ON THE LENGTH OF THE XYCOORDINATE ARRAY
@@ -121,6 +133,7 @@ class Condition_Collector:
             for trial in range(len(escape_obj.xy_coords_by_trial)):
                 if escape_obj.xy_coords_by_trial[trial][0] == []:
                     if trial in trialfilter:
+                        print("EMPTY XY COORDS")
                         trialfilter.remove(trial)
                 if trial in trialfilter:
                     self.escape_data['Total Valid Trials'] += 1
@@ -129,10 +142,13 @@ class Condition_Collector:
                                 trial]):
                         self.escape_data['No Escape'] += 1
                         trialfilter.remove(trial)
+                        print("VELOCITY FILTER")
                 if (trial not in trialfilter):
+                    print("TRIAL NOT IN FILTER")
                     continue
                 try:
                     if wallfilter(escape_obj.initial_conditions[trial][4]):
+                        print("INSIDE WALLFILTER")
                         continue
                 except IndexError:
                     pass
@@ -327,9 +343,10 @@ class Escapes:
         
 #        h_vs_b_mod = [np.abs(hb_trial) for hb_trial in self.h_vs_b_by_trial]
         if plot_fish:
-            df_hvb = pd.DataFrame(h_vs_b_mod).melt()
-            sb.lineplot(data=df_hvb)
-            pl.show()
+ #           fig, ax = pl.subplots(1, 1)
+#            tsplot(h_vs_b_mod, ax)
+  #          pl.show()
+            pass
         else:
             return h_vs_b_mod
 
@@ -362,7 +379,6 @@ class Escapes:
 # and used to ignore video frames from missed indices.
         
     def get_xy_coords(self):
-        print(self.condition)
         for filenum, xy_file in enumerate(self.xy_escapes):
             xcoords = []
             ycoords = []
@@ -370,7 +386,6 @@ class Escapes:
                 x, y = x_and_y_coord(coordstring)
                 xcoords.append(x)
                 ycoords.append(y)
-            print(filenum)
             xc_trial, yc_trial, missed_inds = outlier_filter(xcoords,
                                                              ycoords, [])
             self.xy_coords_by_trial.append([xc_trial,
@@ -835,8 +850,6 @@ class Escapes:
             if bout_angles:
                 print(bout_angles[-1])
             self.pre_escape_bouts.append(bout_angles)
-
-            
             c_thresh = 30
             ta = convolve(self.tailangle_sums[trial], tail_kern)
             # avg_curl_init = np.nanmean(ta[0:self.pre_c])
@@ -956,11 +969,12 @@ class Escapes:
 
     def body_curl(self):
 
-        def body_points(seg1, seg2):
+        def body_points(seg1, seg2, endpoint):
             right = [unpack[0] for unpack in seg1]
             left = [unpack[0] for unpack in seg2]
             bp = [[int(np.mean([a[0], b[0]])), int(np.mean([a[1], b[1]]))]
                   for a, b in zip(right, left[::-1])]
+            bp.append(endpoint[0])
             return bp
 
         fourcc = cv2.VideoWriter_fourcc('M', 'J', 'P', 'G')
@@ -986,7 +1000,7 @@ class Escapes:
                 try:
                     im_color = threshvid.get_data(frame)
                 except:
-                    continue
+                    print("Got no Vid")
                 im = cv2.cvtColor(im_color, cv2.COLOR_BGR2GRAY)
                 im_rot, m, c = rotate_image(im, ha_adj)
                 im_rot_color = cv2.cvtColor(im_rot, cv2.COLOR_GRAY2RGB)
@@ -998,11 +1012,17 @@ class Escapes:
                     continue
                 body_perimeter = cv2.arcLength(body, True)
                 highest_pt = np.argmin([bp[0][1] for bp in body])
+                # rearrange body points so top y value is on top.
                 body = np.concatenate([body[highest_pt:], body[0:highest_pt]])
                 body_segment1 = []
                 body_segment2 = []
                 segment = 1.0
-                numsegs = 18.0
+                numsegs = 14.0
+                # Bool to arclength is whether it is a closed contour.
+                # this must not act to restrict, but to loop.
+
+                # there are more points in body than numsegs. you are splitting the contour up
+                # into numsegs equal parts. 
                 for i in range(len(body)):
                     if cv2.arcLength(body[0:i+1],
                                      False) > body_perimeter*(segment/numsegs):
@@ -1011,11 +1031,13 @@ class Escapes:
                         elif segment > (numsegs/2):
                             body_segment2.append(body[i])
                         elif segment == (numsegs/2):
-                            endpoint = body[i].tolist()                       
+                            endpoint = body[i]
                         segment += 1
-                avg_body_points = body_points(body_segment1, body_segment2)[1:]
 
-# First point inside head is unreliable. take 1:
+                avg_body_points = body_points(body_segment1,
+                                              body_segment2, endpoint)[1:]
+
+# First point inside head is unreliable. take 1:. 
                 for bp in avg_body_points:
                     cv2.ellipse(im_rot_color,
                                 (bp[0], bp[1]),
@@ -1023,13 +1045,6 @@ class Escapes:
                 cv2.drawContours(im_rot_color, [body], -1, (0, 255, 0), 1)
                 cstart_vid.write(im_rot_color)
                 body_gen = toolz.itertoolz.sliding_window(2, avg_body_points)
-                # body_point_diffs = [
-                #     (0, 1)] + [
-                #         (b[0]-a[0], b[1]-a[1]) for a, b in body_gen]
-
-# got rid of the first angle so it is agnostic to the reference when the
-# cstart is
-# happening. cstart messes up the reference
                 body_point_diffs = [(b[0]-a[0],
                                      b[1]-a[1]) for a, b in body_gen]
     #            print body_point_diffs
@@ -1252,12 +1267,10 @@ def plot_all_results(cond_collector_list):
     for cond_ind, cond_data_as_list in enumerate(cond_collector_list):
         cond_data = cond_data_as_list.convert_to_nparrays()
         cond_data_arrays.append(cond_data)
-        print(cond_data)
         try:
-            df_conddata = pd.DataFrame(
-                np.array(cond_data['Heading vs Barrier'])).melt()
-            sb.lineplot(data=df_conddata,
-                        ax=axes[0], estimator=np.nanmean, color=cpal[cond_ind])
+            tsplot(cond_data['Heading vs Barrier'], axes[0])
+#            sb.lineplot(data=df_conddata,
+ #                       ax=axes[0], estimator=np.nanmean, color=cpal[cond_ind])
         except RuntimeError:
             print(cond_data['Heading vs Barrier'])
         correct_moves = 0
@@ -1321,6 +1334,13 @@ def plot_all_results(cond_collector_list):
     cstart_rel_to_prevbout = [cdir[~np.isnan(cdir)] for
                               cdir in [c['CStart Rel to Prevbout']
                               for c in cond_data_arrays]]
+
+
+# add swarmplot on top of barplot and make barplot transparent
+#sns.barplot(x="day", y="total_bill", data=tips, capsize=.1, ci="sd")
+#sns.swarmplot(x="day", y="total_bill", data=tips, color="0", alpha=.35)
+
+    
     sb.barplot(data=cstart_percentage_data, 
                ax=barax[0, 0], estimator=np.nanmean)
     sb.barplot(data=cstart_rel_to_prevbout, ax=barax[2, 1], estimator=np.nanmean)
@@ -1402,23 +1422,24 @@ def experiment_collector(drct_list, cond_list, *new_exps):
         for cond in cond_list:
             try:
                 escape_obj = Escapes(cond, esc_dir, area_thresh)
+                print("past trial generator")
                 escape_obj.trial_analyzer(plotcstarts)
+                print("past trial analyzer")
                 escape_obj.exporter()
-            except IOError:
+            except IOError as err:
+                print(err)
                 print("No " + cond + " Trials in fish" + str(esc_dir))
 # CATCH FOR SPLITTING ACCORDING TO TRIAL GOES HERE. 
             
     for drct in drct_list:
         drct = '/Volumes/Esc_and_2P/Escape_Results/' + drct
-        print(drct)
         for cond_ind, cond_collector in enumerate(cond_collector_list):
             try:
-                print('loading cond ' + str(cond_ind+1) + ' trials')
                 esc_obj = pickle.load(open(
                     drct + '/escapes_' + cond_list[cond_ind] + '.pkl', 'rb'))
                 cond_collector.update_ddict(esc_obj)
             except IOError:
-                pass
+                print("PICKLING ERROR")
     return cond_collector_list
 
 
@@ -1469,14 +1490,14 @@ if __name__ == '__main__':
 
 
 #    mauthners = ['022120_1']
-
     
-    four_b = ['030519_2', '022619_2', '030719_1', '030719_2',
-              '030719_3', '032619_1', '032919_1', '040319_1',
-              '040419_2', '040519_2', '041719_1', '041819_1',
-              '041919_2', '042319_1', '102319_1', '102319_2',
-              '102419_1', '102519_1', '110219_1', '110219_2',
-              '032819_1', '030519_1']
+    four_b = ['022619_2', '030519_1', '030519_2', '030719_1',
+              '030719_2', '030719_3', '032619_1', '032819_1',
+              '032919_1', '040319_1', '040419_2', '040519_2',
+              '041719_1', '041819_1', '041919_2', '042319_1',
+              '042719_1', '102319_1', '102319_2', '102419_1',
+              '102519_1', '110219_1', '110219_2']
+                
 
     # big_b = ['111319_1', '111219_1', '112019_5', '111219_3',
     #          '111219_1', '111219_2', '111219_4', '111319_1',
@@ -1488,6 +1509,12 @@ if __name__ == '__main__':
              '112019_1', '112019_8']
 
 
+    four_b_ec = experiment_collector(four_b, ['l', 'd', 'n'])
+    plot_all_results(four_b_ec)
+
+#    fbb_test = experiment_collector(['102419_1'], ['l', 'd', 'n'], ['102419_1'])
+#    plot_all_results(fbb_test)
+    
     
 
     # 111319_2 and _3 and 2019_4 and _6 do 20 trials in ~ 1-2 minutes. never gets a background and never moves. chuck it.
@@ -1504,10 +1531,13 @@ if __name__ == '__main__':
 #    hd = experiment_collector(mauthners, ['l', 'n'], mauthners)
  #   big_b_ec = experiment_collector(big_b, ['l', 'l'])
 
-#    four_b_ec = experiment_collector(four_b, ['l', 'd', 'n'])
+     
 
-    big_b_ec = experiment_collector(big_b, ['l', 'l'])
-    plot_all_results(big_b_ec)
+ 
+ #   four_b_ec = experiment_collector(four_b, ['l', 'd', 'n'], four_b)
+  #  plot_all_results(four_b_ec)
+#    big_b_ec = experiment_collector(big_b, ['l', 'l'])
+
     
 
 
