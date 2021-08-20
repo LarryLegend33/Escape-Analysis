@@ -1,14 +1,5 @@
-import csv
-import os
 import numpy as np
 import math
-from collections import Counter
-from matplotlib import pyplot as pl
-from matplotlib.cm import ScalarMappable
-from matplotlib.collections import LineCollection
-from matplotlib.colors import ListedColormap, BoundaryNorm
-from matplotlib.image import AxesImage
-from matplotlib.colors import Colormap
 import seaborn as sb
 import cv2
 import toolz
@@ -16,14 +7,22 @@ import scipy.ndimage
 import pickle
 from toolz.itertoolz import sliding_window, partition
 from scipy.ndimage import gaussian_filter, uniform_filter
-
+import csv
+import os
+from collections import Counter
+from matplotlib import pyplot as pl
+from matplotlib.cm import ScalarMappable
+from matplotlib.collections import LineCollection
+from matplotlib.colors import ListedColormap, BoundaryNorm
+from matplotlib.image import AxesImage
+from matplotlib.colors import Colormap
 
 
 def proximity_calculator(nav_list, condition, b_color, *value_range):
     coords_wrt_barrier = []
     nav_object_collection = []
     for nl_item in nav_list:
-        nav_directory = '/Volumes/Escapes_HD/EscapeAnalysis/' + nl_item
+        nav_directory = '/Volumes/Esc_and_2P/Escape_Results/' + nl_item
         nav_object = Navigator(condition, nav_directory)
         nav_object.norm_coords_to_barrier()
         coords_wrt_barrier += nav_object.coords_wrt_closest_barrier
@@ -43,7 +42,7 @@ def proximity_calculator(nav_list, condition, b_color, *value_range):
     # ymax = scale_factor
     # ymin = -1*scale_factor
     
-    proximity_matrix = np.zeros([ymax-ymin+1, xmax-xmin+1])
+    proximity_matrix = np.zeros([int(ymax-ymin+1), int(xmax-xmin+1)])
     for coord in coords_wrt_barrier:
         if np.isfinite(coord).all():
             if magvector(coord) < scale_factor:
@@ -61,7 +60,8 @@ def proximity_calculator(nav_list, condition, b_color, *value_range):
         min_proxmat = np.min(filt_proxmat[filt_proxmat > 0])
         max_proxmat = np.max(filt_proxmat)
  
-    sb.heatmap(filt_proxmat, center=(max_proxmat - min_proxmat) / 2, cmap='viridis')
+#    sb.heatmap(filt_proxmat, center=(max_proxmat - min_proxmat) / 2, cmap='viridis')
+    sb.heatmap(filt_proxmat, center=(max_proxmat - min_proxmat) / 2, cmap='icefire')
 #    sb.heatmap(proximity_matrix)
     bounds = pl.Circle(barrier_location,
                        scale_factor, ec='k', fc='None')
@@ -72,8 +72,8 @@ def proximity_calculator(nav_list, condition, b_color, *value_range):
     pl.show()
     return nav_object_collection, [min_proxmat, max_proxmat]
 
+
 class Navigator:
-    
     def __init__(self, condition, drc):
         self.barrier_coords = []
         self.barrier_diams = []
@@ -86,13 +86,13 @@ class Navigator:
         self.load_barrier_info()
         self.inbound_swims = []
         self.outbound_swims = []
-        
+
     def load_barrier_info(self):
         self.barrier_coords = []
         self.barrier_diams = []
         barrier_file = np.loadtxt(
                 self.drc + '/barrierstruct_' + exp_type + '.txt',
-                dtype='string')
+                dtype='str')
         for line, j in enumerate(barrier_file[2:]):
             if line % 2 == 0:
                 self.barrier_coords.append(x_and_y_coord(j))
@@ -102,15 +102,15 @@ class Navigator:
     def get_xy(self):
         self.xy_coords = []
         xy_file = np.loadtxt(self.drc + '/all_xycoords_' + exp_type + '.txt',
-                             dtype='string')
+                             dtype='str')
         xcoords = []
         ycoords = []
         for coordstring in xy_file:
             x, y = x_and_y_coord(coordstring)
             xcoords.append(x)
             ycoords.append(y)
-        self.xy_coords = np.array(zip(xcoords, ycoords))
-
+        self.xy_coords = np.array([z for z in zip(xcoords, ycoords)])
+        print(self.xy_coords)
         v_from_center = []
         for crd in self.xy_coords:
             vector = np.array(crd)
@@ -126,18 +126,18 @@ class Navigator:
             self.coords_wrt_closest_barrier.append(
                 vec_to_barrier[np.argmin(vec_mags)])
             
-    def plot_xy_experiment(self):
+    def plot_xy_experiment(self, facecolors):
         fig = pl.figure()
-        axes = fig.add_subplot(111, facecolor='.75')
+        axes = fig.add_subplot(111, facecolor='.25')
         axes.grid(False)
-        for br, bd in zip(self.barrier_coords, self.barrier_diams):
+        for br, bd, f in zip(self.barrier_coords, self.barrier_diams, facecolors):
             barrier_x = br[0]
             barrier_y = br[1]
             barrier_diameter = bd
             barrier_plot = pl.Circle((barrier_x, barrier_y),
-                                     barrier_diameter / 2, fc='r')
+                                     barrier_diameter / 2, fc=f)
             axes.add_artist(barrier_plot)
-        axes.plot(self.xy_coords[:, 0], self.xy_coords[:, 1])
+        axes.plot(self.xy_coords[:, 0], self.xy_coords[:, 1], linewidth=1.0)
         axes.axis('equal')
         pl.show()
 
@@ -390,7 +390,7 @@ def crosscoords(xpaths, ypaths, polyfunc):
                         if magvector_center(
                                 crosspoints[-1][2:]) < magvector_center(
                                     [xpath[comp[0]], ypath[comp[0]]]):
-                                continue
+                            continue
                         else:
                             crosspoints[-1] = [path_ind,
                                                line_id,
@@ -483,11 +483,29 @@ red_b = ['061419_1', '061419_2', '061419_3',
 white_b = ['061319_4', '061319_5', '061319_6',
            '061319_7', '061319_8', '061319_9']
 
+red_2xheight_4xwide = ["072221_2", "072221_3", 
+                       "072321_3", "072621_1", "072721_1",
+                       "072721_3", "072721_4", 
+                       "072821_1", "072821_2"]
+
+whiteandred_b = ["061119_1", "061119_2", "061119_3",
+                 "061119_4", "061119_5", "061219_1"]
+
+blackandred_b = ["061219_2", "061219_3", "061219_4",
+                 "061319_1", "061319_2", "061319_3"]
+
 navs_white = proximity_calculator(white_b, exp_type, [1, 1, 1])
 navs_red = proximity_calculator(red_b, exp_type, [1, 0, 0], navs_white[1])
+#navs_big = proximity_calculator(red_2xheight_4xwide, exp_type, [1, 0, 0])  #, navs_white[1])
 
+#navs_whiteandred = proximity_calculator(whiteandred_b, exp_type, [1, 1, 1], navs_white[1])
 
+#navs_blackandred = proximity_calculator(blackandred_b, exp_type, [0, 0, 0], navs_white[1])
 
+#navtest = proximity_calculator(["061219_2"], exp_type, [0, 0, 0], navs_white[1])
+
+# note that each of the navs above contains a list of Navigator objects as the first index
+# you can call the plot_xy_experiment method on each Navigator object to see the trajectory. 
 
 # barrier_loc, barrier_diams = load_barrier_info(exp_type, directory)
 
