@@ -1300,17 +1300,28 @@ def plot_varb_across_ec(ec_list, varb):
     data_for_varb = [[cdir[~np.isnan(cdir)] for
                       cdir in [c[varb]
                                for c in c_array]] for c_array in condition_arrays]
-    sb.boxplot(x=range(len(data_for_varb)), y=data_for_varb))
+    sb.boxplot(x=range(len(data_for_varb)), y=data_for_varb)
     pl.show()
-    
 
-def hairplot_w_cstart_bar(ec1, ec2):
-    condition1_arrays = ec1[0].convert_to_nparrays()
-    condition2_arrays = ec2[0].convert_to_nparrays()
-    fig, axes = pl.subplots(2, 1)
-    axes[1].set_xlim([-100, 100])
-    axes[1].set_ylim([-100, 100])
-    axes[1].vlines(0, -50, 50, colors=(.8, .8, .8), linestyles='dashed')
+    
+def hairplot_w_cstart_bar(fish):
+    ec = make_ec_collection(fish)
+    combined_data = ec[0][0].convert_to_nparrays()
+    condition1_arrays = ec[1][0].convert_to_nparrays()
+    condition2_arrays = ec[2][0].convert_to_nparrays()
+    plotcolors = ['k', 'limegreen']
+#    fig, axes = pl.subplots(2, 1)
+    fig = pl.figure()
+    gs = fig.add_gridspec(8, 7)
+    ax1 = fig.add_subplot(gs[0, 1:6])
+    ax2 = fig.add_subplot(gs[1:, :])
+    axes = [ax1, ax2]
+    axes[0].set_xlim([-1.1, 1.1])
+    axes[0].set_ylim([-2, 2])
+    bound = 100
+    axes[1].set_xlim([-bound, bound])
+    axes[1].set_ylim([-bound, bound])
+    axes[1].vlines(0, -50, 50, colors='gray', linestyles='dashed')
     axes[1].set_aspect('equal')
     correct_moves = 0
     incorrect_moves = 0
@@ -1318,52 +1329,54 @@ def hairplot_w_cstart_bar(ec1, ec2):
     escape_win = [0, 200]
     lr_start_index = 20
     lr_end_index = 200
-    for cond_data in [condition1_arrays, condition2_arrays]:
-        for r_coords, l_coords in itz.zip_longest(
-                cond_data['Barrier On Left Trajectories'],
-                cond_data['Barrier On Right Trajectories']):
-            if r_coords is not None:
-                r_coords = [r_coords[0][escape_win[0]:escape_win[1]],
-                            r_coords[1][escape_win[0]:escape_win[1]]]
-                axes[1].plot(r_coords[0], r_coords[1],
-                           color='k', linewidth=1, alpha=.3)
-                if np.sum(r_coords[0][lr_start_index:lr_end_index]) < 0:
-                    correct_moves += 1
-                else:
-                    incorrect_moves += 1
-            if l_coords is not None:
-                l_coords = [l_coords[0][escape_win[0]:escape_win[1]],
-                            l_coords[1][escape_win[0]:escape_win[1]]]
-                axes[1].plot(l_coords[0], l_coords[1],
-                           color='b', linewidth=1, alpha=.3)
+    for r_coords, l_coords in itz.zip_longest(
+          combined_data['Barrier On Left Trajectories'],
+          combined_data['Barrier On Right Trajectories']):
+        if r_coords is not None:
+              r_coords = [r_coords[0][escape_win[0]:escape_win[1]],
+                          r_coords[1][escape_win[0]:escape_win[1]]]
+              axes[1].plot(r_coords[0], r_coords[1],
+                           color=plotcolors[0], linewidth=.8, alpha=.4)
+              if np.sum(r_coords[0][lr_start_index:lr_end_index]) < 0:
+                  correct_moves += 1
+              else:
+                  incorrect_moves += 1
+        if l_coords is not None:
+              l_coords = [l_coords[0][escape_win[0]:escape_win[1]],
+                          l_coords[1][escape_win[0]:escape_win[1]]]
+              axes[1].plot(l_coords[0], l_coords[1],
+                           color=plotcolors[1], linewidth=.8, alpha=.4)
     # CHANGE SIGN OF THIS TO SHOW CORRECT MOVES AS SIMPLY LEFT TURNS
-                if np.sum(l_coords[0][lr_start_index:lr_end_index]) > 0:
-                    correct_moves += 1
-                else:
-                    incorrect_moves += 1
-    axes[1].text(
-        -95, -80,
-        str(correct_moves) + ' Correct', size=10)
-    axes[1].text(
-        -95, -95,
-        str(incorrect_moves) + ' Incorrect', size=10)
+              if np.sum(l_coords[0][lr_start_index:lr_end_index]) > 0:
+                  correct_moves += 1
+              else:
+                  incorrect_moves += 1
 
-    cstart_percentage_data_c1 = [cdir[~np.isnan(cdir)] for
-                                 cdir in [c['Correct CStart Percentage']
-                                          for c in condition1_arrays]]
-    cstart_percentage_data_c2 = [cdir[~np.isnan(cdir)] for
-                                 cdir in [c['Correct CStart Percentage']
-                                          for c in condition2_arrays]]
+    correct_percentage = int(round(
+        100*correct_moves/(correct_moves+incorrect_moves), 0))
+    axes[1].text(
+        -40, -80,
+        str(correct_percentage) + '% Away From Barrier', size=10)
+    # axes[1].text(
+    #     -95, -95,
+    #     str(incorrect_moves) + ' Incorrect', size=10)
 
-# add swarmplot on top of barplot and make barplot transparent
-#sns.barplot(x="day", y="total_bill", data=tips, capsize=.1, ci="sd")
-#sns.swarmplot(x="day", y="total_bill", data=tips, color="0", alpha=.35)
+    # condition left prob right, condition right prob left per fish
+
+    cstart_percentage_data_c1 = [2*cdir[~np.isnan(cdir)]-1 for
+                                 cdir in [condition1_arrays['Correct CStart Percentage']]]
+                                       
+    cstart_percentage_data_c2 = [-1*(2*cdir[~np.isnan(cdir)] - 1) for
+                                 cdir in [condition2_arrays['Correct CStart Percentage']]]
     sb.barplot(data=cstart_percentage_data_c1,
-               ax=axes[0], estimator=np.nanmedian, color='k', orient='h')
-    sb.barplot(data=cstart_percentage_data_c2*-1,
-               ax=axes[0], estimator=np.nanmedian, color='b', orient='h')
-    sb.swarmplot(data=cstart_percentage_data_c1, ax=axes[0], color="k", alpha=.35, size=3, orient='h')
-    sb.swarmplot(data=cstart_percentage_data_c2*-1, ax=axes[0], color="b", alpha=.35, size=3, orient='h')
+                ax=axes[0], estimator=np.nanmean, color=plotcolors[1], orient='h', errwidth=.4)
+    sb.barplot(data=cstart_percentage_data_c2,
+                ax=axes[0], estimator=np.nanmean, color=plotcolors[0], orient='h', errwidth=.4)
+    sb.despine()
+#     sb.swarmplot(data=cstart_percentage_data_c1, ax=axes[0], color="b", alpha=.35, size=3, orient='h')
+ #   sb.swarmplot(data=cstart_percentage_data_c2, ax=axes[0], color="k", alpha=.35, size=3, orient='h')
+    axes[1].set_axis_off()
+    pl.tight_layout()
     pl.show()
 
 
@@ -1500,9 +1513,9 @@ def plot_all_results(cond_collector_list):
 #    barax[1, 2].bar(xlocs, dud_bars)
     sb.barplot(data=left_cstart_bar, ax=barax[1, 2], estimator=np.nanmedian, palette=cpal)
     sb.swarmplot(data=left_cstart_bar, ax=barax[1, 2], color="0", alpha=.35, size=3)
-    sb.violinplot(data=[np.concatenate(bdist, axis=0) for bdist 
-                        in [c['Distance From Barrier After Escape']
-                        for c in cond_data_arrays]],  ax=axes[1])
+#    sb.violinplot(data=[np.concatenate(bdist, axis=0) for bdist 
+ #                       in [c['Distance From Barrier After Escape']
+  #                      for c in cond_data_arrays]],  ax=axes[1])
     cstart_percentage_data = [cdir[~np.isnan(cdir)] for
                               cdir in [c['Correct CStart Percentage']
                               for c in cond_data_arrays]]
@@ -1556,7 +1569,8 @@ def plot_all_results(cond_collector_list):
 
 
 def parse_obj_by_trial(drct_list, cond, mods):
-    os.chdir('/Volumes/Esc_and_2P/Escape_Results/')
+#    os.chdir('/Volumes/Esc_and_2P/Escape_Results/')
+    os.chdir('/Volumes/Seagate/AndrewTestData/')
 #    os.chdir('/Users/nightcrawler2/Escape-Analysis/')
     for drct in drct_list:
         fish_id = '/' + drct
@@ -1582,11 +1596,16 @@ def parse_obj_by_trial(drct_list, cond, mods):
             esc.exporter()
 
 
-def experiment_collector(drct_list, cond_list, *new_exps):
+def experiment_collector(drct_list, cond_list, filter_settings, *new_exps):
     cond_collector_list = [Condition_Collector(cl) for cl in cond_list]
+    for cc in cond_collector_list:
+        cc.filter_index = filter_settings[0]
+        cc.filter_range = filter_settings[1]
+    
     if new_exps != ():
         new_exps = new_exps[0]
-    os.chdir('/Volumes/Esc_and_2P/Escape_Results')
+#    os.chdir('/Volumes/Esc_and_2P/Escape_Results')
+    os.chdir('/Volumes/Seagate/AndrewTestData/')
     for newexp_dirct in new_exps:
         fish_id = '/' + newexp_dirct
         pl.ioff()
@@ -1596,7 +1615,8 @@ def experiment_collector(drct_list, cond_list, *new_exps):
         
         area_thresh = 47
 #        esc_dir = os.getcwd() + fish_id
-        esc_dir = '/Volumes/Esc_and_2P/Escape_Results' + fish_id
+#        esc_dir = '/Volumes/Esc_and_2P/Escape_Results' + fish_id
+        esc_dir = '/Volumes/Seagate/AndrewTestData' + fish_id
         print(esc_dir)
         plotcstarts = False
         for cond in cond_list:
@@ -1612,7 +1632,8 @@ def experiment_collector(drct_list, cond_list, *new_exps):
 # CATCH FOR SPLITTING ACCORDING TO TRIAL GOES HERE. 
             
     for drct in drct_list:
-        drct = '/Volumes/Esc_and_2P/Escape_Results/' + drct
+#        drct = '/Volumes/Esc_and_2P/Escape_Results/' + drct
+        drct = '/Volumes/Seagate/AndrewTestData/' + drct
         for cond_ind, cond_collector in enumerate(cond_collector_list):
             try:
                 esc_obj = pickle.load(open(
@@ -1623,6 +1644,15 @@ def experiment_collector(drct_list, cond_list, *new_exps):
                 print("PICKLING ERROR")
     return cond_collector_list
 
+
+def make_ec_collection(fish):
+    ec_all = experiment_collector(fish, ['l'], [0, []]) 
+    #                                              red12mm_4mmdist_2h)
+    ec_r = experiment_collector(fish, ['l'], [0, [0, 180]])
+#                                                 red12mm_4mmdist_2h)
+    ec_l = experiment_collector(fish, ['l'], [0, [-180, 0]])
+    return ec_all, ec_r, ec_l
+    
 
 # SIMPLY CALL EXPERIMENT_COLLECTOR ON TWO SEPARATE DRCT_LISTS AND THEN + THEM, PUT INTO PLOT_ALL
     
@@ -1765,18 +1795,20 @@ if __name__ == '__main__':
                           "080221_3", "080221_4", "080221_5", "080221_6",
                           "080221_7", "080321_1", "080321_2", "080321_3"]
 
-  #  red12mm_4mmdist_2h_ec = experiment_collector(red12mm_4mmdist_2h, ['l', 'n'])
-                                              #   red12mm_4mmdist_2h)
-    
-   # plot_all_results(red12mm_4mmdist_2h_ec)
+#    red12mm_4mmdist_2h_ec = experiment_collector(red12mm_4mmdist_2h, ['l'], [0, []]) 
 
-   #   red48mm_8mmdist_2h_ec = experiment_collector(red48mm_8mmdist_2h, ['l', 'n'])
-  #  plot_all_results(red48mm_8mmdist_2h_ec)
+    hairplot_w_cstart_bar(red12mm_4mmdist_2h)
+    
+#    plot_all_results(red12mm_4mmdist_2h_ec)
+
+
+ #    red48mm_8mmdist_2h_ec = experiment_collector(red48mm_8mmdist_2h, ['l', 'n'])
+   #  plot_all_results(red48mm_8mmdist_2h_ec)
 
   
 
     
-    four_b_ec = experiment_collector(four_b, ['l', 'd', 'n'])
+   # four_b_ec = experiment_collector(four_b, ['l', 'd', 'n'])
 #    four_b_ec = experiment_collector(four_b + virtual, ['n'])
 #    plot_all_results(four_b_ec)
 
