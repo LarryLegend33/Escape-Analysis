@@ -1295,6 +1295,78 @@ def magvector(vec):
     return mag
 
 
+def plot_varb_across_ec(ec_list, varb):
+    condition_arrays = [ec[0].convert_to_nparrays() for ec in ec_list]
+    data_for_varb = [[cdir[~np.isnan(cdir)] for
+                      cdir in [c[varb]
+                               for c in c_array]] for c_array in condition_arrays]
+    sb.boxplot(x=range(len(data_for_varb)), y=data_for_varb))
+    pl.show()
+    
+
+def hairplot_w_cstart_bar(ec1, ec2):
+    condition1_arrays = ec1[0].convert_to_nparrays()
+    condition2_arrays = ec2[0].convert_to_nparrays()
+    fig, axes = pl.subplots(2, 1)
+    axes[1].set_xlim([-100, 100])
+    axes[1].set_ylim([-100, 100])
+    axes[1].vlines(0, -50, 50, colors=(.8, .8, .8), linestyles='dashed')
+    axes[1].set_aspect('equal')
+    correct_moves = 0
+    incorrect_moves = 0
+#        escape_win = [10, 25]
+    escape_win = [0, 200]
+    lr_start_index = 20
+    lr_end_index = 200
+    for cond_data in [condition1_arrays, condition2_arrays]:
+        for r_coords, l_coords in itz.zip_longest(
+                cond_data['Barrier On Left Trajectories'],
+                cond_data['Barrier On Right Trajectories']):
+            if r_coords is not None:
+                r_coords = [r_coords[0][escape_win[0]:escape_win[1]],
+                            r_coords[1][escape_win[0]:escape_win[1]]]
+                axes[1].plot(r_coords[0], r_coords[1],
+                           color='k', linewidth=1, alpha=.3)
+                if np.sum(r_coords[0][lr_start_index:lr_end_index]) < 0:
+                    correct_moves += 1
+                else:
+                    incorrect_moves += 1
+            if l_coords is not None:
+                l_coords = [l_coords[0][escape_win[0]:escape_win[1]],
+                            l_coords[1][escape_win[0]:escape_win[1]]]
+                axes[1].plot(l_coords[0], l_coords[1],
+                           color='b', linewidth=1, alpha=.3)
+    # CHANGE SIGN OF THIS TO SHOW CORRECT MOVES AS SIMPLY LEFT TURNS
+                if np.sum(l_coords[0][lr_start_index:lr_end_index]) > 0:
+                    correct_moves += 1
+                else:
+                    incorrect_moves += 1
+    axes[1].text(
+        -95, -80,
+        str(correct_moves) + ' Correct', size=10)
+    axes[1].text(
+        -95, -95,
+        str(incorrect_moves) + ' Incorrect', size=10)
+
+    cstart_percentage_data_c1 = [cdir[~np.isnan(cdir)] for
+                                 cdir in [c['Correct CStart Percentage']
+                                          for c in condition1_arrays]]
+    cstart_percentage_data_c2 = [cdir[~np.isnan(cdir)] for
+                                 cdir in [c['Correct CStart Percentage']
+                                          for c in condition2_arrays]]
+
+# add swarmplot on top of barplot and make barplot transparent
+#sns.barplot(x="day", y="total_bill", data=tips, capsize=.1, ci="sd")
+#sns.swarmplot(x="day", y="total_bill", data=tips, color="0", alpha=.35)
+    sb.barplot(data=cstart_percentage_data_c1,
+               ax=axes[0], estimator=np.nanmedian, color='k', orient='h')
+    sb.barplot(data=cstart_percentage_data_c2*-1,
+               ax=axes[0], estimator=np.nanmedian, color='b', orient='h')
+    sb.swarmplot(data=cstart_percentage_data_c1, ax=axes[0], color="k", alpha=.35, size=3, orient='h')
+    sb.swarmplot(data=cstart_percentage_data_c2*-1, ax=axes[0], color="b", alpha=.35, size=3, orient='h')
+    pl.show()
+
+
 def plot_all_results(cond_collector_list):
     cond_list = [c.condition for c in cond_collector_list]
     # if cond_list != cond_list_orig:
@@ -1704,9 +1776,9 @@ if __name__ == '__main__':
   
 
     
-    four_b_ec = experiment_collector(four_b, ['l', 'd']) #, 'n'])
+    four_b_ec = experiment_collector(four_b, ['l', 'd', 'n'])
 #    four_b_ec = experiment_collector(four_b + virtual, ['n'])
-    plot_all_results(four_b_ec)
+#    plot_all_results(four_b_ec)
 
 
     
