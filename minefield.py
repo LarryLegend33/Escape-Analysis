@@ -1307,9 +1307,9 @@ def plot_varb_across_ec(ec_list, varb):
 def hairplot_w_cstart_bar(fish):
     ec = make_ec_collection(fish)
     combined_data = ec[0][0].convert_to_nparrays()
-    condition1_arrays = ec[1][0].convert_to_nparrays()
-    condition2_arrays = ec[2][0].convert_to_nparrays()
-    plotcolors = ['k', 'limegreen']
+    barrier_on_right_arrays = ec[1][0].convert_to_nparrays()
+    barrier_on_left_arrays = ec[2][0].convert_to_nparrays()
+    plotcolors = ['dodgerblue', 'deeppink']
 #    fig, axes = pl.subplots(2, 1)
     fig = pl.figure()
     gs = fig.add_gridspec(8, 7)
@@ -1333,29 +1333,29 @@ def hairplot_w_cstart_bar(fish):
           combined_data['Barrier On Left Trajectories'],
           combined_data['Barrier On Right Trajectories']):
         if r_coords is not None:
-              r_coords = [r_coords[0][escape_win[0]:escape_win[1]],
-                          r_coords[1][escape_win[0]:escape_win[1]]]
-              axes[1].plot(r_coords[0], r_coords[1],
-                           color=plotcolors[0], linewidth=.8, alpha=.4)
-              if np.sum(r_coords[0][lr_start_index:lr_end_index]) < 0:
-                  correct_moves += 1
-              else:
-                  incorrect_moves += 1
+            r_coords = [r_coords[0][escape_win[0]:escape_win[1]],
+                        r_coords[1][escape_win[0]:escape_win[1]]]
+            axes[1].plot(r_coords[0], r_coords[1],
+                         color=plotcolors[0], linewidth=.8, alpha=.4)
+            if np.sum(r_coords[0][lr_start_index:lr_end_index]) < 0:
+                correct_moves += 1
+            else:
+                incorrect_moves += 1
         if l_coords is not None:
-              l_coords = [l_coords[0][escape_win[0]:escape_win[1]],
-                          l_coords[1][escape_win[0]:escape_win[1]]]
-              axes[1].plot(l_coords[0], l_coords[1],
-                           color=plotcolors[1], linewidth=.8, alpha=.4)
-    # CHANGE SIGN OF THIS TO SHOW CORRECT MOVES AS SIMPLY LEFT TURNS
-              if np.sum(l_coords[0][lr_start_index:lr_end_index]) > 0:
-                  correct_moves += 1
-              else:
-                  incorrect_moves += 1
+            l_coords = [l_coords[0][escape_win[0]:escape_win[1]],
+                        l_coords[1][escape_win[0]:escape_win[1]]]
+            axes[1].plot(l_coords[0], l_coords[1],
+                         color=plotcolors[1], linewidth=.8, alpha=.4)
+  # CHANGE SIGN OF THIS TO SHOW CORRECT MOVES AS SIMPLY LEFT TURNS
+            if np.sum(l_coords[0][lr_start_index:lr_end_index]) > 0:
+                correct_moves += 1
+            else:
+                incorrect_moves += 1
 
     correct_percentage = int(round(
         100*correct_moves/(correct_moves+incorrect_moves), 0))
     axes[1].text(
-        -40, -80,
+        -45, -80,
         str(correct_percentage) + '% Away From Barrier', size=10)
     # axes[1].text(
     #     -95, -95,
@@ -1363,15 +1363,16 @@ def hairplot_w_cstart_bar(fish):
 
     # condition left prob right, condition right prob left per fish
 
-    cstart_percentage_data_c1 = [2*cdir[~np.isnan(cdir)]-1 for
-                                 cdir in [condition1_arrays['Correct CStart Percentage']]]
+    cstart_percentage_b_on_right = [-1*(2*cdir[~np.isnan(cdir)] - 1) for
+                                    cdir in [barrier_on_right_arrays['Correct CStart Percentage']]]
                                        
-    cstart_percentage_data_c2 = [-1*(2*cdir[~np.isnan(cdir)] - 1) for
-                                 cdir in [condition2_arrays['Correct CStart Percentage']]]
-    sb.barplot(data=cstart_percentage_data_c1,
+    cstart_percentage_b_on_left = [2*cdir[~np.isnan(cdir)] - 1 for
+                                   cdir in [barrier_on_left_arrays['Correct CStart Percentage']]]
+    sb.barplot(data=cstart_percentage_b_on_right,
+               ax=axes[0], estimator=np.nanmean, color=plotcolors[0], orient='h', errwidth=.4)
+
+    sb.barplot(data=cstart_percentage_b_on_left,
                 ax=axes[0], estimator=np.nanmean, color=plotcolors[1], orient='h', errwidth=.4)
-    sb.barplot(data=cstart_percentage_data_c2,
-                ax=axes[0], estimator=np.nanmean, color=plotcolors[0], orient='h', errwidth=.4)
     sb.despine()
 #     sb.swarmplot(data=cstart_percentage_data_c1, ax=axes[0], color="b", alpha=.35, size=3, orient='h')
  #   sb.swarmplot(data=cstart_percentage_data_c2, ax=axes[0], color="k", alpha=.35, size=3, orient='h')
@@ -1569,9 +1570,8 @@ def plot_all_results(cond_collector_list):
 
 
 def parse_obj_by_trial(drct_list, cond, mods):
-#    os.chdir('/Volumes/Esc_and_2P/Escape_Results/')
-    os.chdir('/Volumes/Seagate/AndrewTestData/')
-#    os.chdir('/Users/nightcrawler2/Escape-Analysis/')
+    os.chdir('/Volumes/Esc_and_2P/Escape_Results/')
+#    os.chdir('/Volumes/Seagate/AndrewTestData/')
     for drct in drct_list:
         fish_id = '/' + drct
         pl.ioff()
@@ -1604,8 +1604,8 @@ def experiment_collector(drct_list, cond_list, filter_settings, *new_exps):
     
     if new_exps != ():
         new_exps = new_exps[0]
-#    os.chdir('/Volumes/Esc_and_2P/Escape_Results')
-    os.chdir('/Volumes/Seagate/AndrewTestData/')
+    os.chdir('/Volumes/Esc_and_2P/Escape_Results')
+#    os.chdir('/Volumes/Seagate/AndrewTestData/')
     for newexp_dirct in new_exps:
         fish_id = '/' + newexp_dirct
         pl.ioff()
@@ -1615,8 +1615,8 @@ def experiment_collector(drct_list, cond_list, filter_settings, *new_exps):
         
         area_thresh = 47
 #        esc_dir = os.getcwd() + fish_id
-#        esc_dir = '/Volumes/Esc_and_2P/Escape_Results' + fish_id
-        esc_dir = '/Volumes/Seagate/AndrewTestData' + fish_id
+        esc_dir = '/Volumes/Esc_and_2P/Escape_Results' + fish_id
+#        esc_dir = '/Volumes/Seagate/AndrewTestData' + fish_id
         print(esc_dir)
         plotcstarts = False
         for cond in cond_list:
@@ -1632,8 +1632,8 @@ def experiment_collector(drct_list, cond_list, filter_settings, *new_exps):
 # CATCH FOR SPLITTING ACCORDING TO TRIAL GOES HERE. 
             
     for drct in drct_list:
-#        drct = '/Volumes/Esc_and_2P/Escape_Results/' + drct
-        drct = '/Volumes/Seagate/AndrewTestData/' + drct
+        drct = '/Volumes/Esc_and_2P/Escape_Results/' + drct
+#        drct = '/Volumes/Seagate/AndrewTestData/' + drct
         for cond_ind, cond_collector in enumerate(cond_collector_list):
             try:
                 esc_obj = pickle.load(open(
@@ -1722,6 +1722,8 @@ if __name__ == '__main__':
               '041719_1', '041819_1', '041919_2', '042319_1',
               '042719_1', '102319_1', '102319_2', '102419_1',
               '102519_1', '110219_1', '110219_2']
+
+    hairplot_w_cstart_bar(virtual)
                 
 
     # big_b = ['111319_1', '111219_1', '112019_5', '111219_3',
@@ -1797,7 +1799,7 @@ if __name__ == '__main__':
 
 #    red12mm_4mmdist_2h_ec = experiment_collector(red12mm_4mmdist_2h, ['l'], [0, []]) 
 
-    hairplot_w_cstart_bar(red12mm_4mmdist_2h)
+  #  hairplot_w_cstart_bar(red12mm_4mmdist_2h)
     
 #    plot_all_results(red12mm_4mmdist_2h_ec)
 
