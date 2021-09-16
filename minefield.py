@@ -36,6 +36,11 @@ import matplotlib
 # and plotting the escape trajectory relative to a barrier position
 
 
+# initial results computed with cstart_time_thresh = 150, angle thresh = 30, std = 1
+
+
+
+
 
 matplotlib.rcParams['pdf.fonttype'] = 42
 
@@ -77,7 +82,8 @@ class Condition_Collector:
                             'Taps Per Entry Into Arena': [],
                             'Total Time In Center': [],
                             'Barrier On Left Trajectories': [],
-                            'Barrier On Right Trajectories': []}
+                            'Barrier On Right Trajectories': [],
+                            'CStarts Per Trial': [0, 0]}
         self.timerange = []
         self.filter_index = 0
 
@@ -176,6 +182,7 @@ class Condition_Collector:
                 except IndexError:
                     pass
                 gf = escape_obj.pre_escape[trial]
+                # gf is grayframes (e.g. how many gray frames happened before the escape tap)
                 try:
                     num_gfs = len(gf)
                 except TypeError:
@@ -203,6 +210,8 @@ class Condition_Collector:
             #             len(escape_obj.numgrayframes)))
             #     self.escape_data[
             #         'Total Time In Center'] += escape_obj.numgrayframes.tolist()
+            self.escape_data['CStarts Per Trial'][0] += sum(escape_obj.cstarts_per_trial)
+            self.escape_data['CStarts Per Trial'][1] += len(escape_obj.cstarts_per_trial)
             self.escape_data['Total Collisions'] += np.sum(non_nan_collisions)
             self.escape_data['Collision Percentage'].append(
                 np.sum(non_nan_collisions) / float(
@@ -264,6 +273,8 @@ class Condition_Collector:
         return np_array_dict
 
 
+# first step would be to check if latency stats are even taking everything into account     
+
 class Escapes:
 
     def __init__(self, exp_type, directory, area_thresh, *sub_class):
@@ -280,6 +291,9 @@ class Escapes:
         self.stim_times_accurate = []
         self.escape_latencies = []
         self.collisions = []
+        self.cstart_filter_std = .5
+        self.cstart_angle_thresh = 50
+        self.cstart_time_thresh = 150
         if exp_type in ['l', 'd']:
             bstruct_and_br_label = 'b'
         elif exp_type in ['v', 'i']:
@@ -354,6 +368,7 @@ class Escapes:
         self.cstart_rel_to_last_bout = []
         self.cstart_angles = []
         self.cstart_rel_to_barrier = []
+        self.cstarts_per_trial = []
         self.all_tailangles = []
         self.tailangle_sums = []
         self.ha_in_timeframe = []
@@ -451,21 +466,32 @@ class Escapes:
     def get_stim_times(self, plot_stim):
         for stim_file in self.stim_data:
             stimdata = np.genfromtxt(stim_file)
-            light_profile = [np.sum(np.array(a) * np.arange(100)) for a in partition(100, stimdata)]
-            std_light_profile = gaussian_filter([np.std(lp) for lp in sliding_window(5, light_profile)], 1)
-            std_max = argrelmax(std_light_profile)[0]
-            stim_init = [stdm for stdm, stdlp in zip(
-                std_max, std_light_profile[std_max]) if stdlp > 10000]
-            stim_init = [st for st in stim_init if (
-                self.timerange[0] < st < self.timerange[1])]
+            light_profile = [np.sum(a[50:100]) for a in partition(100, stimdata)]
+#            light_profile = [np.sum(np.array(a) * np.arange(100)) for a in partition(100, stimdata)]
+         #   std_light_profile = gaussian_filter([np.std(lp) for lp in sliding_window(5, light_profile)], 1)
+           # std_max = argrelmax(std_light_profile)[0]
+           
+            stim_init = np.argmax(light_profile[0:140])
+            if not (self.timerange[0] < stim_init < self.timerange[1]):
+                stim_init = np.nan
+            elif light_profile[stim_init] < 200:
+                stim_init = np.nan
+        #    stim_init = [st for st in stim_init if (
+           #     self.timerange[0] < st < self.timerange[1])]
+#            stim_init = [stdm for stdm, stdlp in zip(
+ #               std_max, std_light_profile[std_max]) if stdlp > 1000]
+  #          stim_init = [st for st in stim_init if (
+   #             self.timerange[0] < st < self.timerange[1])]
             if plot_stim:
-                pl.plot(std_light_profile)
+                pl.plot(light_profile)
+                if not math.isnan(stim_init):
+                    pl.plot([stim_init], [0], marker='.', color='r')
                 pl.show()
-            if not stim_init:
+            if math.isnan(stim_init):
                 self.stim_init_times.append(self.pre_c)
                 self.stim_times_accurate.append(0)
             else:
-                self.stim_init_times.append(stim_init[0]-self.timerange[0])
+                self.stim_init_times.append(stim_init-self.timerange[0])
                 self.stim_times_accurate.append(1)
 
 # finds which barrier in the barrier file the fish is escaping from
@@ -836,7 +862,7 @@ class Escapes:
                 self.escape_latencies.append(np.nan)
                 self.pre_escape_bouts.append(np.nan)
                 continue
-            tail_kern = Gaussian1DKernel(1)
+            tail_kern = Gaussian1DKernel(self.cstart_filter_std)
             stim_init = self.stim_init_times[trial]
             print("Stim Init")
             pre_xy_file = self.pre_escape[trial]
@@ -897,17 +923,22 @@ class Escapes:
             if bout_angles:
                 print(bout_angles[-1])
             self.pre_escape_bouts.append(bout_angles)
-            c_thresh = 30
+            c_thresh = self.cstart_angle_thresh
   #          cstart_window = [0, stim_init + 20]
  #           ta = convolve(self.tailangle_sums[trial][0:cstart_window[1]], tail_kern)
             ta = convolve(self.tailangle_sums[trial], tail_kern)
             # avg_curl_init = np.nanmean(ta[0:self.pre_c])
             # ta = ta - avg_curl_init
+
+            # currently the "order" arg to argrelmin and max is only 1, meaning
+            # the relmin and max happen if the left and right of the index are both smaller or both bigger. also, the gaussian
+            # filter may be a bit too strong -- may be cutting off the max tail angle so people will be less convinced its a cstart.
+            # could switch to .2 or .5
             c_start_angle = float('nan')
             ta_min = argrelmin(ta)[0].tolist()
             ta_max = argrelmax(ta)[0].tolist()
             ta_maxandmin = [x for x in sorted(ta_min + ta_max) if (
-                (x > stim_init) and abs(
+                (stim_init < x < self.cstart_time_thresh+stim_init) and abs(
                     ta[x]) > c_thresh)]
             if plotornot:
                 pl.plot(ta)
@@ -922,11 +953,16 @@ class Escapes:
                 self.cstart_rel_to_barrier.append(np.nan)
                 self.cstart_angles.append(np.nan)
                 self.escape_latencies.append(np.nan)
+                self.cstarts_per_trial.append(0)
                 continue
             c_start_angle = ta[ta_maxandmin[0]]
             c_start_ind = ta_maxandmin[0]
             self.cstart_angles.append(c_start_angle)
-            self.escape_latencies.append(c_start_ind - stim_init)
+            self.cstarts_per_trial.append(1)
+            if self.stim_times_accurate[trial]:
+                self.escape_latencies.append(c_start_ind - stim_init)
+            else:
+                self.escape_latencies.append(np.nan)
     # Get latency here based on stim index and c_start_index
 
 
@@ -1295,17 +1331,45 @@ def magvector(vec):
     return mag
 
 
-def plot_varb_across_ec(ec_list, varb):
+def collect_varb_across_ec(fishlist, cond, varb, filt):
+    ec_list = [experiment_collector(fish, cond, filt) for fish in fishlist]
     condition_arrays = [ec[0].convert_to_nparrays() for ec in ec_list]
     data_for_varb = [[cdir[~np.isnan(cdir)] for
-                      cdir in [c[varb]
-                               for c in c_array]] for c_array in condition_arrays]
-    sb.boxplot(x=range(len(data_for_varb)), y=data_for_varb)
-    pl.show()
+                      cdir in c_array[varb]] for c_array in condition_arrays]
+    filtered_data = [[f[0] for f in filter(lambda x: x.size > 0, d)] for d in data_for_varb]
 
+    # come up with metric for collision normalization. use cstart bias plus collision rate. 
+    return filtered_data
+#    sb.boxplot(x=range(len(data_for_varb)), y=data_for_varb)
+#    pl.show()
+
+# lambda x: -1*(2*x - 1) will be the mapfunction for barrier on right
+# lambda x: (2*x - 1) will be the mapfunction for barrier on left
+
+def plot_varb_over_ecs(dv1, *dv2):
+    sb.set(style="ticks", rc={"lines.linewidth": .75})
+    if dv2 != ():
+        dv2, mapfunc2 = dv2[0]
+        xvals2 = []
+        for i, d in enumerate(dv2):
+            xvals2.append(i*np.ones(len(d)))
+        xv_concat2 = np.concatenate(xvals2)
+        yvals2 = list(map(mapfunc2, np.concatenate(dv2)))
+        sb.pointplot(x=xv_concat2, y=yvals2, color='deeppink')
+        sb.stripplot(x=xv_concat2, y=yvals2, dodge=False, alpha=.2, zorder=0, jitter=.005, color='deeppink')
+    dv, mapfunc = dv1
+    xvals = []
+    for i, d in enumerate(dv):
+        xvals.append(i*np.ones(len(d)))
+    xv_concat = np.concatenate(xvals)
+    yvals = list(map(mapfunc, np.concatenate(dv)))
+    sb.pointplot(x=xv_concat, y=yvals, color='dodgerblue')
+    sb.stripplot(x=xv_concat, y=yvals, dodge=False, alpha=.2, zorder=0, jitter=.005, color='dodgerblue')
+    pl.show()
     
-def hairplot_w_cstart_bar(fish):
-    ec = make_ec_collection(fish)
+    
+def hairplot_w_cstart_bar(fish, cond):
+    ec = make_ec_collection(fish, cond)
     combined_data = ec[0][0].convert_to_nparrays()
     barrier_on_right_arrays = ec[1][0].convert_to_nparrays()
     barrier_on_left_arrays = ec[2][0].convert_to_nparrays()
@@ -1431,17 +1495,17 @@ def plot_all_results(cond_collector_list):
                 r_coords = [r_coords[0][escape_win[0]:escape_win[1]],
                             r_coords[1][escape_win[0]:escape_win[1]]]
                 try:
-                    # axes2[cond_ind].plot(r_coords[0], r_coords[1],
-                    #                      color=np.array(cpal[cond_ind]) * .5, linewidth=1, alpha=.3)
-                    # axes2[cond_ind].plot(r_coords[0], r_coords[1],
-                    #                      color='k', linewidth=1, alpha=.3)
-                    pass
+                    axes2[cond_ind].plot(r_coords[0], r_coords[1],
+                                         color=np.array(cpal[cond_ind]) * .5, linewidth=1, alpha=.3)
+                #    axes2[cond_ind].plot(r_coords[0], r_coords[1],
+                 #                        color='k', linewidth=1, alpha=.3)
+ #                   pass
                 except TypeError:
-                    # axes2.plot(r_coords[0], r_coords[1],
-                    #            color=np.array(cpal[cond_ind]) * .5, linewidth=1, alpha=.3)
-                    # axes2.plot(r_coords[0], r_coords[1],
-                    #            color='k', linewidth=1, alpha=.3)
-                    pass
+                     axes2.plot(r_coords[0], r_coords[1],
+                                color=np.array(cpal[cond_ind]) * .5, linewidth=1, alpha=.3)
+                 #   axes2.plot(r_coords[0], r_coords[1],
+                  #             color='k', linewidth=1, alpha=.3)
+#                    pass
                 if np.sum(r_coords[0][lr_start_index:lr_end_index]) < 0:
                     correct_moves += 1
                 else:
@@ -1450,20 +1514,20 @@ def plot_all_results(cond_collector_list):
                 l_coords = [l_coords[0][escape_win[0]:escape_win[1]],
                             l_coords[1][escape_win[0]:escape_win[1]]]
                 try:
-                    # axes2[cond_ind].plot(-1*l_coords[0], l_coords[1],
-                    #                      color=cpal[cond_ind] * 1 / np.max(
-                    #                          cpal[cond_ind]), linewidth=1, alpha=.3)
                     axes2[cond_ind].plot(l_coords[0], l_coords[1],
-                                         color='k', linewidth=1, alpha=.5)
-                    pass
+                                         color=cpal[cond_ind] * 1 / np.max(
+                                              cpal[cond_ind]), linewidth=1, alpha=.3)
+                 #   axes2[cond_ind].plot(l_coords[0], l_coords[1],
+                  #                       color='k', linewidth=1, alpha=.5)
+             #       pass
                                
                 except TypeError:
-                    # axes2.plot(-1*l_coords[0], l_coords[1],
-                    #            color=cpal[cond_ind] * 1 / np.max(
-                    #                cpal[cond_ind]), linewidth=1, alpha=.3)
                     axes2.plot(l_coords[0], l_coords[1],
-                               color='k', linewidth=1, alpha=.5)
-                    pass
+                               color=cpal[cond_ind] * 1 / np.max(
+                                    cpal[cond_ind]), linewidth=1, alpha=.3)
+                 #   axes2.plot(l_coords[0], l_coords[1],
+                  #             color='k', linewidth=1, alpha=.5)
+               #     pass
 
 # CHANGE SIGN OF THIS TO SHOW CORRECT MOVES AS SIMPLY LEFT TURNS
                 if np.sum(l_coords[0][lr_start_index:lr_end_index]) > 0:
@@ -1645,12 +1709,10 @@ def experiment_collector(drct_list, cond_list, filter_settings, *new_exps):
     return cond_collector_list
 
 
-def make_ec_collection(fish):
-    ec_all = experiment_collector(fish, ['l'], [0, []]) 
-    #                                              red12mm_4mmdist_2h)
-    ec_r = experiment_collector(fish, ['l'], [0, [0, 180]])
-#                                                 red12mm_4mmdist_2h)
-    ec_l = experiment_collector(fish, ['l'], [0, [-180, 0]])
+def make_ec_collection(fish, cond):
+    ec_all = experiment_collector(fish, [cond], [0, []])
+    ec_r = experiment_collector(fish, [cond], [0, [0, 180]])
+    ec_l = experiment_collector(fish, [cond], [0, [-180, 0]])
     return ec_all, ec_r, ec_l
     
 
@@ -1663,7 +1725,8 @@ def make_ec_collection(fish):
 
 if __name__ == '__main__':
 
-
+  #  dv = collect_varb_across_ec([four_b, red24mm_4mmdist, red12mm_4mmdist_2h, red12mm_4mmdist, red48mm_8mmdist_2h, red48mm_8mmdist], 'l', 'Correct CStart Percentage')
+    
     # write a wrapper function to combine data across conditions.
     # need to come up with a collision metric that combines collision percentage
     # and incorrect turn percentage. 
@@ -1689,7 +1752,7 @@ if __name__ == '__main__':
                '091119_5', '091319_1', '091319_2', '091319_3',
                '091319_4', '092719_1','092719_2', '092719_3', '092719_4', '100219_1', '100219_2',
                '100219_3', '100219_4', '100219_6', '100219_7', '100219_5']
-#    ec1 = experiment_collector(virtual, ['v', 'i', 'n'])# virtual)
+   # ec1 = experiment_collector(virtual, ['v', 'i', 'n'])# virtual)
 #    plot_all_results(ec1)
 
     # RED
@@ -1708,11 +1771,9 @@ if __name__ == '__main__':
               '072419_4', '072419_5', '072419_6', '072419_7',
               '072419_8', '072419_9', '072519_1', '072619_1',
               '072619_2', '072619_3', '072619_4']
-#    ec1 = experiment_collector(four_w, ['l'])    #,  four_w)
-#    plot_all_results(ec1)
+#    ec1 = experiment_collector(four_w, ['l'], [0, []], four_w)    #,  four_w)
+   # plot_all_results(ec1)
 
-   # ec1 = experiment_collector(four_b+virtual, ['n'])
-   #  plot_all_results(ec1)
 
 #    mauthners = ['022120_1']
     
@@ -1723,8 +1784,12 @@ if __name__ == '__main__':
               '042719_1', '102319_1', '102319_2', '102419_1',
               '102519_1', '110219_1', '110219_2']
 
-    hairplot_w_cstart_bar(virtual)
-                
+#    hairplot_w_cstart_bar(virtual, 'v')
+
+#    hairplot_w_cstart_bar(four_w, 'l')
+   # ec1 = experiment_collector(four_b, ['l'], [0, []], four_b)
+   # plot_all_results(ec1)
+
 
     # big_b = ['111319_1', '111219_1', '112019_5', '111219_3',
     #          '111219_1', '111219_2', '111219_4', '111319_1',
@@ -1746,8 +1811,8 @@ if __name__ == '__main__':
                       '060321_4', '060321_5', '060321_6', '060321_7',
                       '060421_8', '061021_4', '061021_5']
 
-#    mauth_l_ec = experiment_collector(wik_mauthner_l, ['l', 'n'])
-#    plot_all_results(mauth_l_ec)
+#    mauth_l_ec = experiment_collector(wik_mauthner_l, ['l'], [0, []], wik_mauthner_l)
+ #   plot_all_results(mauth_l_ec)
 #    mauth_r_ec = experiment_collector(wik_mauthner_r, ['l', 'n'])
 
  #   plot_all_results(mauth_r_ec)
@@ -1760,17 +1825,16 @@ if __name__ == '__main__':
                        '061521_2', '061521_3', '061521_4', '061521_5',
                        '061521_6']
 
-  #  red24mm_4mmdist_ec = experiment_collector(red24mm_4mmdist, ['l', 'n'])
-    #  red24mm_4mmdist)
-  #  plot_all_results(red24mm_4mmdist_ec)
+    red24mm_4mmdist_ec = experiment_collector(red24mm_4mmdist, ['l'], [0, []], red24mm_4mmdist)
+    plot_all_results(red24mm_4mmdist_ec)
 
     red12mm_4mmdist = ["061721_1", "061721_2", "061721_3", "061721_4", "061721_5",
                        "061721_6", "061721_7", "061821_1", "061821_2", "061821_3", 
                        "061821_4", "061821_5", "061821_6",  "062221_1", "062221_2",
                        "062221_3", "062221_4", "062221_5", "062221_6"]
 
-   # red12mm_4mmdist_ec = experiment_collector(red12mm_4mmdist, ['l', 'n'])
-                                             # red12mm_4mmdist)
+ #   red12mm_4mmdist_ec = experiment_collector(red12mm_4mmdist, ['l'], [0, []],
+            #                                  red12mm_4mmdist)
    # plot_all_results(red12mm_4mmdist_ec)
 
     red48mm_8mmdist = ["062521_3", "062521_4", "063021_2",
@@ -1780,24 +1844,32 @@ if __name__ == '__main__':
                        "070721_4", "070721_5", "070721_6", "070921_2",
                        "070921_4"]
 
-#    red48mm_8mmdist_ec = experiment_collector(red48mm_8mmdist, ['l', 'n'])
+ #   red48mm_8mmdist_ec = experiment_collector(red48mm_8mmdist, ['l', 'n'])
     #                                          red48mm_8mmdist)
 #    plot_all_results(red48mm_8mmdist_ec)
 
-    red48mm_8mmdist_2h = ["070821_1", "070821_2", "070821_8", "070821_9",
-                          "070921_6", "071221_1", #"071221_2",
+    red48mm_8mmdist_2h = [#"070821_1", "070821_2", "070821_8", "070821_9",
+        #                  "070921_6",
+                          "071221_1", #"071221_2",  "071221_9"
+
+                          #note that 7/8 and 7/9 appear to have no taps! 1221_3 has taps and cstarts,                            # 1221_9 also has no taps. 
                           "071221_3",
                           "071221_5", "071221_6", "071221_7", "071221_8",
-                          "071221_9", "071321_3", "071421_1", "071421_2",
+                          "071321_3", "071421_1", "071421_2",
                           "071421_3", "071421_4", "071421_5", "071421_7"]
 
-    red12mm_4mmdist_2h = ["072921_1", "072921_2", "072921_4", "073021_1",
-                          "073021_2", "073021_3", "073021_4", "073021_5",
-                          "073021_7", "073021_8", "073021_9", "080221_2",
-                          "080221_3", "080221_4", "080221_5", "080221_6",
-                          "080221_7", "080321_1", "080321_2", "080321_3"]
+   # red48mm_8mmdist_2h_ec = experiment_collector(red48mm_8mmdist_2h, ['l'], [0, []], red48mm_8mmdist_2h)
+   # plot_all_results(red48mm_8mmdist_2h_ec)
 
-#    red12mm_4mmdist_2h_ec = experiment_collector(red12mm_4mmdist_2h, ['l'], [0, []]) 
+    
+
+    # red12mm_4mmdist_2h = ["072921_1", "072921_2", "072921_4", "073021_1",
+    #                       "073021_2", "073021_3", "073021_4", "073021_5",
+    #                       "073021_7", "073021_8", "073021_9", "080221_2",
+    #                       "080221_3", "080221_4", "080221_5", "080221_6",
+    #                       "080221_7", "080321_1", "080321_2", "080321_3"]
+
+   # red12mm_4mmdist_2h_ec = experiment_collector(red12mm_4mmdist_2h, ['l'], [0, []], red12mm_4mmdist_2h) 
 
   #  hairplot_w_cstart_bar(red12mm_4mmdist_2h)
     
