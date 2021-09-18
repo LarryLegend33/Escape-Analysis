@@ -65,6 +65,7 @@ def ts_plot(list_of_lists, ax):
 class Condition_Collector:
     def __init__(self, condition):
         self.condition = condition
+        self.trajectory_win = [20, 200]
         self.escape_data = {'Heading vs Barrier': [],
                             'Distance From Barrier After Escape': [],
                             'Collision Percentage': [],
@@ -75,6 +76,10 @@ class Condition_Collector:
                             'No Escape': 0,
                             'Phototaxis to Tap Time': [],
                             'Correct CStart Percentage': [],
+                            'Total Correct Trajectories': [0, 0],
+                            'Correct Trajectory Percentage': [], 
+                            'Correct Trajectory Percentage BLeft': [],
+                            'Correct Trajectory Percentage BRight': [], 
                             'Total Correct CStarts': 0,
                             'Total CStarts': 0,
                             'Left vs Right CStarts': [],
@@ -92,6 +97,8 @@ class Condition_Collector:
         # filter_index 0 is h_vs_b. if neg, barrier is on left. 
         
 #        self.filter_range = [90, 200]
+        self.rejected_fish = []
+        self.included_fish = []
         self.filter_cstart = np.nan
         # 0 to 180 for barrier on right, -180 to 0 for barrier on left. empty for no filter. 
         self.filter_range = []
@@ -118,28 +125,38 @@ class Condition_Collector:
                 return False
             else:
                 return True
-                
+
+
+        if sum(escape_obj.stim_times_accurate) == 0:
+            self.rejected_fish.append(escape_obj.directory)
+            return 0
+        else:
+            self.included_fish.append(escape_obj.directory)
+
         if escape_obj.condition != self.condition:
             raise Exception('input condition mistmatch with class')
         else:
-            # 1 for distance, 0 for angle. 
-            initial_filterval_to_barrier = [initial[self.filter_index] if initial != [] else np.nan for initial
-                                            in escape_obj.initial_conditions]
-
-            if not math.isnan(self.filter_cstart):
-                trialfilter = [i for i, c in enumerate(
-                    escape_obj.cstart_angles) if np.sign(c) == self.filter_cstart]
-                print("trialfilter")
-                print(trialfilter)
-
-            elif not self.filter_range == []:
-                print(initial_filterval_to_barrier)
-                trialfilter = [i for i, d in enumerate(
-                    initial_filterval_to_barrier) if (
-                        self.filter_range[0] < d < self.filter_range[1])]
-                print(trialfilter)
+            # 1 for distance, 0 for angle.
+            if self.filter_index < 2:
+                initial_filterval_to_barrier = [initial[self.filter_index] if initial != [] else np.nan for initial
+                                                in escape_obj.initial_conditions]
+                if not math.isnan(self.filter_cstart):
+                    trialfilter = [i for i, c in enumerate(
+                        escape_obj.cstart_angles) if np.sign(c) == self.filter_cstart]
+                    print("trialfilter")
+                    print(trialfilter)
+                elif not self.filter_range == []:
+                    print(initial_filterval_to_barrier)
+                    trialfilter = [i for i, d in enumerate(
+                        initial_filterval_to_barrier) if (
+                            self.filter_range[0] < d < self.filter_range[1])]
+                    print(trialfilter)
+                else:
+                    trialfilter = list(range(len(escape_obj.xy_coords_by_trial)))
             else:
-                trialfilter = list(range(len(escape_obj.xy_coords_by_trial)))
+                right_or_wrong = self.filter_range[0]
+                trialfilter = [i for i, c in enumerate(
+                    escape_obj.cstart_rel_to_barrier) if c == right_or_wrong]
             
 
             # MAKE THIS A LOOP BASED ON THE LENGTH OF THE XYCOORDINATE ARRAY
@@ -156,6 +173,8 @@ class Condition_Collector:
             non_nan_cstarts = []
             non_nan_cstarts_rel_to_prevbout = []
             cstart_angles = []
+            cstarts_executed = 0
+            cstart_opportunities = 0
             non_nan_collisions = []
             # filter for specific trials that satisify filter conditions
             # get rid of wall trials if you input data that contains wall
@@ -203,6 +222,9 @@ class Condition_Collector:
                 if not math.isnan(escape_obj.collisions[trial]):
                     non_nan_collisions.append(escape_obj.collisions[trial])
                 cstart_angles.append(escape_obj.cstart_angles[trial])
+                cstarts_executed += escape_obj.cstarts_per_trial[trial]
+                cstart_opportunities += 1
+                
 
             # if len(escape_obj.numgrayframes) != 0:
             #     self.escape_data['Taps Per Entry Into Arena'].append(
@@ -210,8 +232,8 @@ class Condition_Collector:
             #             len(escape_obj.numgrayframes)))
             #     self.escape_data[
             #         'Total Time In Center'] += escape_obj.numgrayframes.tolist()
-            self.escape_data['CStarts Per Trial'][0] += sum(escape_obj.cstarts_per_trial)
-            self.escape_data['CStarts Per Trial'][1] += len(escape_obj.cstarts_per_trial)
+            self.escape_data['CStarts Per Trial'][0] += cstarts_executed
+            self.escape_data['CStarts Per Trial'][1] += cstart_opportunities
             self.escape_data['Total Collisions'] += np.sum(non_nan_collisions)
             self.escape_data['Collision Percentage'].append(
                 np.sum(non_nan_collisions) / float(
@@ -226,7 +248,12 @@ class Condition_Collector:
    #         except ZeroDivisionError:
     #            self.escape_data['Left vs Right CStarts'].append(np.nan)
             self.escape_data['CStart Angle'] += np.abs(cstart_angles).tolist()
-            br, bl = escape_obj.escapes_vs_barrierloc(0, trialfilter)
+            bl, br = escape_obj.escapes_vs_barrierloc(0, trialfilter)
+            bl = [[blc[0][0:self.trajectory_win[1]],
+                   blc[1][0:self.trajectory_win[1]]] for blc in bl]
+            br = [[brc[0][0:self.trajectory_win[1]],
+                   brc[1][0:self.trajectory_win[1]]] for brc in br]
+            
             self.escape_data['Heading vs Barrier'] += escape_obj.h_vs_b_plot(
                 0, trialfilter)
 
@@ -235,10 +262,26 @@ class Condition_Collector:
 # cstart detection to errors. fish is basically always found. 
             self.escape_data['Barrier On Left Trajectories'] += bl
             self.escape_data['Barrier On Right Trajectories'] += br
-            # self.escape_data['Barrier On Left Trajectories'] += [
-            #     trj for trj, cs in zip(bl, cstart_angles) if not math.isnan(cs)]
-            # self.escape_data['Barrier On Right Trajectories'] += [
-            #     trj for trj, cs in zip(br, cstart_angles) if not math.isnan(cs)]
+
+            br_correct_moves = 0
+            bl_correct_moves = 0
+            for r_coords in br:
+                if np.sum(r_coords[0][self.trajectory_win[0]:]) < 0:
+                    br_correct_moves += 1
+            for l_coords in bl:
+                if np.sum(l_coords[0][self.trajectory_win[0]:]) > 0:
+                    bl_correct_moves += 1
+            print(len(br))
+            print(len(bl))
+            if len(bl) != 0 or len(br) != 0:
+                self.escape_data['Correct Trajectory Percentage'].append((br_correct_moves + bl_correct_moves)/(len(br) + len(bl)))
+            if not len(br) == 0:
+                self.escape_data['Correct Trajectory Percentage BRight'].append(br_correct_moves / len(br))
+            if not len(bl) == 0:
+                self.escape_data['Correct Trajectory Percentage BLeft'].append(bl_correct_moves / len(bl))
+            self.escape_data['Total Correct Trajectories'][0] += (bl_correct_moves + br_correct_moves)
+            self.escape_data['Total Correct Trajectories'][1] += (len(bl) + len(br)) - (bl_correct_moves + br_correct_moves)
+            
             last_xy = zip(last_x, last_y)
 
             # This has to remove the radius of the barrier. 
@@ -1368,12 +1411,12 @@ def plot_varb_over_ecs(dv1, *dv2):
     pl.show()
     
     
-def hairplot_w_cstart_bar(fish, cond):
+def hairplot_w_preferenceindex(fish, cond):
     ec = make_ec_collection(fish, cond)
     combined_data = ec[0][0].convert_to_nparrays()
     barrier_on_right_arrays = ec[1][0].convert_to_nparrays()
     barrier_on_left_arrays = ec[2][0].convert_to_nparrays()
-    plotcolors = ['dodgerblue', 'deeppink']
+    plotcolors = ['deeppink', 'dodgerblue']
 #    fig, axes = pl.subplots(2, 1)
     fig = pl.figure()
     gs = fig.add_gridspec(8, 7)
@@ -1390,32 +1433,18 @@ def hairplot_w_cstart_bar(fish, cond):
     correct_moves = 0
     incorrect_moves = 0
 #        escape_win = [10, 25]
-    escape_win = [0, 200]
-    lr_start_index = 20
-    lr_end_index = 200
-    for r_coords, l_coords in itz.zip_longest(
+    for bl_coords, br_coords in itz.zip_longest(
           combined_data['Barrier On Left Trajectories'],
           combined_data['Barrier On Right Trajectories']):
-        if r_coords is not None:
-            r_coords = [r_coords[0][escape_win[0]:escape_win[1]],
-                        r_coords[1][escape_win[0]:escape_win[1]]]
-            axes[1].plot(r_coords[0], r_coords[1],
+        if bl_coords is not None:
+            axes[1].plot(bl_coords[0], bl_coords[1],
                          color=plotcolors[0], linewidth=.8, alpha=.4)
-            if np.sum(r_coords[0][lr_start_index:lr_end_index]) < 0:
-                correct_moves += 1
-            else:
-                incorrect_moves += 1
-        if l_coords is not None:
-            l_coords = [l_coords[0][escape_win[0]:escape_win[1]],
-                        l_coords[1][escape_win[0]:escape_win[1]]]
-            axes[1].plot(l_coords[0], l_coords[1],
+        if br_coords is not None:
+            axes[1].plot(br_coords[0], br_coords[1],
                          color=plotcolors[1], linewidth=.8, alpha=.4)
   # CHANGE SIGN OF THIS TO SHOW CORRECT MOVES AS SIMPLY LEFT TURNS
-            if np.sum(l_coords[0][lr_start_index:lr_end_index]) > 0:
-                correct_moves += 1
-            else:
-                incorrect_moves += 1
-
+    correct_moves, incorrect_moves = combined_data['Total Correct Trajectories']
+  
     correct_percentage = int(round(
         100*correct_moves/(correct_moves+incorrect_moves), 0))
     axes[1].text(
@@ -1427,22 +1456,43 @@ def hairplot_w_cstart_bar(fish, cond):
 
     # condition left prob right, condition right prob left per fish
 
-    cstart_percentage_b_on_right = [-1*(2*cdir[~np.isnan(cdir)] - 1) for
-                                    cdir in [barrier_on_right_arrays['Correct CStart Percentage']]]
+    cstart_percentage_b_on_right = [(2*csp -1) for
+                                    csp in barrier_on_right_arrays['Correct CStart Percentage']]
                                        
-    cstart_percentage_b_on_left = [2*cdir[~np.isnan(cdir)] - 1 for
-                                   cdir in [barrier_on_left_arrays['Correct CStart Percentage']]]
-    sb.barplot(data=cstart_percentage_b_on_right,
+    cstart_percentage_b_on_left = [-1*(2*csp-1) for
+                                   csp in barrier_on_left_arrays['Correct CStart Percentage']]
+
+    # this val will be positive
+
+    correct_traj_percentage_b_on_right = [(2*ctp - 1) for
+                                          ctp in combined_data['Correct Trajectory Percentage BRight']]
+
+
+    # this val will be negative
+    
+    correct_traj_percentage_b_on_left = [-1*(2*ctp - 1) for
+                                         ctp in combined_data['Correct Trajectory Percentage BLeft']]
+
+    
+    # sb.barplot(data=cstart_percentage_b_on_right,
+    #            ax=axes[0], estimator=np.nanmean, color=plotcolors[0], orient='h', errwidth=.4)
+
+    # sb.barplot(data=cstart_percentage_b_on_left,
+    #             ax=axes[0], estimator=np.nanmean, color=plotcolors[1], orient='h', errwidth=.4)
+
+    sb.barplot(data=correct_traj_percentage_b_on_right,
                ax=axes[0], estimator=np.nanmean, color=plotcolors[0], orient='h', errwidth=.4)
 
-    sb.barplot(data=cstart_percentage_b_on_left,
+    sb.barplot(data=correct_traj_percentage_b_on_left,
                 ax=axes[0], estimator=np.nanmean, color=plotcolors[1], orient='h', errwidth=.4)
+
     sb.despine()
 #     sb.swarmplot(data=cstart_percentage_data_c1, ax=axes[0], color="b", alpha=.35, size=3, orient='h')
  #   sb.swarmplot(data=cstart_percentage_data_c2, ax=axes[0], color="k", alpha=.35, size=3, orient='h')
     axes[1].set_axis_off()
     pl.tight_layout()
     pl.show()
+    return correct_traj_percentage_b_on_left, correct_traj_percentage_b_on_right, cstart_percentage_b_on_left
 
 
 def plot_all_results(cond_collector_list):
@@ -1455,22 +1505,6 @@ def plot_all_results(cond_collector_list):
     fig, axes = pl.subplots(1, 2)
     axes[0].set_title('Fish Orientation vs. Barrier (rad)')
     axes[1].set_title('Distance from Barrier at Escape Termination')
-    fig2, axes2 = pl.subplots(1, len(cond_list), sharex=True, sharey=True)
-    bounds = 100
-    for i in range(len(cond_list)):
-        try:
-            axes2[i].set_xlim([-bounds, bounds])
-            axes2[i].set_ylim([-bounds, bounds])
-            axes2[i].vlines(0, -50, 50, colors=(.8, .8, .8), linestyles='dashed')
-            axes2[i].set_aspect('equal')
-            axes2[i].set_title(cond_list[i])
-        except TypeError:
-            axes2.set_xlim([-bounds, bounds])
-            axes2.set_ylim([-bounds, bounds])
-            axes2.vlines(0, -50, 50, colors=(.8, .8, .8), linestyles='dashed')
-            axes2.set_aspect('equal')
-            axes2.set_title(cond_list[i])
-            
     cond_data_arrays = []
     for cond_ind, cond_data_as_list in enumerate(cond_collector_list):
         cond_data = cond_data_as_list.convert_to_nparrays()
@@ -1482,73 +1516,7 @@ def plot_all_results(cond_collector_list):
  #                       ax=axes[0], estimator=np.nanmean, color=cpal[cond_ind])
         except RuntimeError:
             print(cond_data['Heading vs Barrier'])
-        correct_moves = 0
-        incorrect_moves = 0
-#        escape_win = [10, 25]
-        escape_win = [0, 200]
-        lr_start_index = 20
-        lr_end_index = 200
-        for r_coords, l_coords in itz.zip_longest(
-                cond_data['Barrier On Left Trajectories'],
-                cond_data['Barrier On Right Trajectories']):
-            if r_coords is not None:
-                r_coords = [r_coords[0][escape_win[0]:escape_win[1]],
-                            r_coords[1][escape_win[0]:escape_win[1]]]
-                try:
-                    axes2[cond_ind].plot(r_coords[0], r_coords[1],
-                                         color=np.array(cpal[cond_ind]) * .5, linewidth=1, alpha=.3)
-                #    axes2[cond_ind].plot(r_coords[0], r_coords[1],
-                 #                        color='k', linewidth=1, alpha=.3)
- #                   pass
-                except TypeError:
-                     axes2.plot(r_coords[0], r_coords[1],
-                                color=np.array(cpal[cond_ind]) * .5, linewidth=1, alpha=.3)
-                 #   axes2.plot(r_coords[0], r_coords[1],
-                  #             color='k', linewidth=1, alpha=.3)
-#                    pass
-                if np.sum(r_coords[0][lr_start_index:lr_end_index]) < 0:
-                    correct_moves += 1
-                else:
-                    incorrect_moves += 1
-            if l_coords is not None:
-                l_coords = [l_coords[0][escape_win[0]:escape_win[1]],
-                            l_coords[1][escape_win[0]:escape_win[1]]]
-                try:
-                    axes2[cond_ind].plot(l_coords[0], l_coords[1],
-                                         color=cpal[cond_ind] * 1 / np.max(
-                                              cpal[cond_ind]), linewidth=1, alpha=.3)
-                 #   axes2[cond_ind].plot(l_coords[0], l_coords[1],
-                  #                       color='k', linewidth=1, alpha=.5)
-             #       pass
-                               
-                except TypeError:
-                    axes2.plot(l_coords[0], l_coords[1],
-                               color=cpal[cond_ind] * 1 / np.max(
-                                    cpal[cond_ind]), linewidth=1, alpha=.3)
-                 #   axes2.plot(l_coords[0], l_coords[1],
-                  #             color='k', linewidth=1, alpha=.5)
-               #     pass
-
-# CHANGE SIGN OF THIS TO SHOW CORRECT MOVES AS SIMPLY LEFT TURNS
-                if np.sum(l_coords[0][lr_start_index:lr_end_index]) > 0:
-                    correct_moves += 1
-                else:
-                    incorrect_moves += 1
-        try:
-            axes2[cond_ind].text(
-                -95, -80,
-                str(correct_moves) + ' Correct', size=10)
-            axes2[cond_ind].text(
-                -95, -95,
-                str(incorrect_moves) + ' Incorrect', size=10)
-        except TypeError:
-            axes2.text(
-                -95, -80,
-                str(correct_moves) + ' Correct', size=10)
-            axes2.text(
-                -95, -95,
-                str(incorrect_moves) + ' Incorrect', size=10)
-
+      
     pl.tight_layout()
     barfig, barax = pl.subplots(3, 3, figsize=(8, 6))
     barax[0, 0].set_title('% CStart Away from Barrier')
@@ -1595,7 +1563,7 @@ def plot_all_results(cond_collector_list):
 
     cpal = sb.color_palette("hls", 8)
     sb.barplot(data=cstart_percentage_data, 
-               ax=barax[0, 0], estimator=np.nanmedian, palette=cpal)
+               ax=barax[0, 0], estimator=np.nanmean, palette=cpal)
     sb.swarmplot(data=cstart_percentage_data, ax=barax[0,0], color="0", alpha=.35, size=3)
 
     sb.barplot(data=cstart_rel_to_prevbout, ax=barax[2, 1], estimator=np.nanmean, palette=cpal)
@@ -1726,56 +1694,24 @@ def make_ec_collection(fish, cond):
 if __name__ == '__main__':
 
   #  dv = collect_varb_across_ec([four_b, red24mm_4mmdist, red12mm_4mmdist_2h, red12mm_4mmdist, red48mm_8mmdist_2h, red48mm_8mmdist], 'l', 'Correct CStart Percentage')
+
+
     
-    # write a wrapper function to combine data across conditions.
-    # need to come up with a collision metric that combines collision percentage
-    # and incorrect turn percentage. 
-    
-
-    # hd = experiment_collector(['030519_1', '030519_2',
-    #                            '030719_1', '030719_2', '030719_3'], ['l', 'd'],
-    #                           ['030519_1', '030519_2',
-    #                            '030719_1', '030719_2', '030719_3'])
-  
-            
-            
-
-
- # hd = experiment_collector(['030519_1', '030519_2',
-    #                            '030719_1', '030719_2', '030719_3'], ['l', 'd'],
-    #                           ['030519_1', '030519_2',
-    #                            '030719_1', '030719_2', '030719_3'])
-    # hd = experiment_collector(['091119_4'], ['v', 'i', 'n'], ['091119_4'])
-
     # VIRTUAL BARRIERS
     virtual = ['091119_4', '091019_1', '091019_2', '091119_1', '091119_2', '091119_3',
                '091119_5', '091319_1', '091319_2', '091319_3',
                '091319_4', '092719_1','092719_2', '092719_3', '092719_4', '100219_1', '100219_2',
                '100219_3', '100219_4', '100219_6', '100219_7', '100219_5']
-   # ec1 = experiment_collector(virtual, ['v', 'i', 'n'])# virtual)
-#    plot_all_results(ec1)
-
-    # RED
-    # ['013120_2', '013120_3', '013120_8']
-    mauthners = ['021320_1', '021320_2', '021320_3',
-                 '022120_1', '022120_2', '022120_3']
-  #  ec1 = experiment_collector(mauthners, ['l', 'n'])
+  #  ec1 = experiment_collector(virtual, ['v', 'i', 'n'], [0, []], virtual)
   #  plot_all_results(ec1)
 
-#    mauthners = ['021320_1', '021320_2', '021320_3']
-                
- #   mauthners = ['022120_1', '022120_2',
-  #               '022120_3']
     four_w = ['072319_1', '072319_2', '072319_3', '072319_4',
               '072319_5', '072319_6', '072319_7', '072419_3',
               '072419_4', '072419_5', '072419_6', '072419_7',
               '072419_8', '072419_9', '072519_1', '072619_1',
               '072619_2', '072619_3', '072619_4']
-#    ec1 = experiment_collector(four_w, ['l'], [0, []], four_w)    #,  four_w)
-   # plot_all_results(ec1)
-
-
-#    mauthners = ['022120_1']
+  #  ec1 = experiment_collector(four_w, ['l', 'n'], [0, []], four_w)    #,  four_w)
+  #  plot_all_results(ec1)
     
     four_b = ['022619_2', '030519_1', '030519_2', '030719_1',
               '030719_2', '030719_3', '032619_1', '032819_1',
@@ -1785,20 +1721,16 @@ if __name__ == '__main__':
               '102519_1', '110219_1', '110219_2']
 
 #    hairplot_w_cstart_bar(virtual, 'v')
-
 #    hairplot_w_cstart_bar(four_w, 'l')
-   # ec1 = experiment_collector(four_b, ['l'], [0, []], four_b)
-   # plot_all_results(ec1)
+
+    #cp = hairplot_w_preferenceindex(four_b, 'l')
 
 
-    # big_b = ['111319_1', '111219_1', '112019_5', '111219_3',
-    #          '111219_1', '111219_2', '111219_4', '111319_1',
-    #          '111319_2', '111319_3', '112019_1', '112019_4',
-    #          '112019_6', '112019_7', '112019_8']
+# used to test stim and cstart detection -- perfect! 
+#    four_b_1 = ['022619_2', '030519_1']
 
-    big_b = ['111319_1', '111219_1', '112019_5', '111219_3',
-             '111219_1', '111219_2', '111219_4', '111319_1',
-             '112019_1', '112019_8']
+#    ec1 = experiment_collector(four_b, ['l'], [0, []])
+ #   plot_all_results(ec1)
 
     wik_mauthner_l = ['052721_1', '052821_1', '060421_1', '060421_2',
                       '060421_3', '060421_4', '060421_5', '060421_6',
@@ -1811,13 +1743,10 @@ if __name__ == '__main__':
                       '060321_4', '060321_5', '060321_6', '060321_7',
                       '060421_8', '061021_4', '061021_5']
 
-#    mauth_l_ec = experiment_collector(wik_mauthner_l, ['l'], [0, []], wik_mauthner_l)
- #   plot_all_results(mauth_l_ec)
-#    mauth_r_ec = experiment_collector(wik_mauthner_r, ['l', 'n'])
-
+#    mauth_l_ec = experiment_collector(wik_mauthner_l, ['l', 'n'], [0, []], wik_mauthner_l)
+#    plot_all_results(mauth_l_ec)
+ #   mauth_r_ec = experiment_collector(wik_mauthner_r, ['l', 'n'], [0, []], wik_mauthner_r)
  #   plot_all_results(mauth_r_ec)
-
-#    '061421_4',
     
     red24mm_4mmdist = ['061121_1', '061121_2', '061121_3', '061121_4',
                        '061121_5', '061121_6', '061121_7', '061421_1',
@@ -1825,17 +1754,17 @@ if __name__ == '__main__':
                        '061521_2', '061521_3', '061521_4', '061521_5',
                        '061521_6']
 
-    red24mm_4mmdist_ec = experiment_collector(red24mm_4mmdist, ['l'], [0, []], red24mm_4mmdist)
-    plot_all_results(red24mm_4mmdist_ec)
+   # red24mm_4mmdist_ec = experiment_collector(red24mm_4mmdist, ['l','n'], [0, []]) # red24mm_4mmdist)
+   # plot_all_results(red24mm_4mmdist_ec)
 
     red12mm_4mmdist = ["061721_1", "061721_2", "061721_3", "061721_4", "061721_5",
                        "061721_6", "061721_7", "061821_1", "061821_2", "061821_3", 
                        "061821_4", "061821_5", "061821_6",  "062221_1", "062221_2",
                        "062221_3", "062221_4", "062221_5", "062221_6"]
 
- #   red12mm_4mmdist_ec = experiment_collector(red12mm_4mmdist, ['l'], [0, []],
-            #                                  red12mm_4mmdist)
-   # plot_all_results(red12mm_4mmdist_ec)
+ #   red12mm_4mmdist_ec = experiment_collector(red12mm_4mmdist, ['l', 'n'], [0, []],
+  #                                            red12mm_4mmdist)
+#    plot_all_results(red12mm_4mmdist_ec)
 
     red48mm_8mmdist = ["062521_3", "062521_4", "063021_2",
                        "063021_3", "063021_4", "063021_5",
@@ -1844,9 +1773,9 @@ if __name__ == '__main__':
                        "070721_4", "070721_5", "070721_6", "070921_2",
                        "070921_4"]
 
- #   red48mm_8mmdist_ec = experiment_collector(red48mm_8mmdist, ['l', 'n'])
-    #                                          red48mm_8mmdist)
-#    plot_all_results(red48mm_8mmdist_ec)
+  #  red48mm_8mmdist_ec = experiment_collector(red48mm_8mmdist, ['l', 'n'], [0,[]], 
+   #                                           red48mm_8mmdist)
+   # plot_all_results(red48mm_8mmdist_ec)
 
     red48mm_8mmdist_2h = [#"070821_1", "070821_2", "070821_8", "070821_9",
         #                  "070921_6",
@@ -1858,391 +1787,35 @@ if __name__ == '__main__':
                           "071321_3", "071421_1", "071421_2",
                           "071421_3", "071421_4", "071421_5", "071421_7"]
 
-   # red48mm_8mmdist_2h_ec = experiment_collector(red48mm_8mmdist_2h, ['l'], [0, []], red48mm_8mmdist_2h)
-   # plot_all_results(red48mm_8mmdist_2h_ec)
+  #  red48mm_8mmdist_2h_ec = experiment_collector(red48mm_8mmdist_2h, ['l', 'n'], [0, []], red48mm_8mmdist_2h)
+  #  plot_all_results(red48mm_8mmdist_2h_ec)
 
     
 
-    # red12mm_4mmdist_2h = ["072921_1", "072921_2", "072921_4", "073021_1",
-    #                       "073021_2", "073021_3", "073021_4", "073021_5",
-    #                       "073021_7", "073021_8", "073021_9", "080221_2",
-    #                       "080221_3", "080221_4", "080221_5", "080221_6",
-    #                       "080221_7", "080321_1", "080321_2", "080321_3"]
+    red12mm_4mmdist_2h = ["072921_1", "072921_2", "072921_4", "073021_1",
+                          "073021_2", "073021_3", "073021_4", "073021_5",
+                          "073021_7", "073021_8", "073021_9", "080221_2",
+                          "080221_3", "080221_4", "080221_5", "080221_6",
+                          "080221_7", "080321_1", "080321_2", "080321_3"]
 
-   # red12mm_4mmdist_2h_ec = experiment_collector(red12mm_4mmdist_2h, ['l'], [0, []], red12mm_4mmdist_2h) 
+   # red12mm_4mmdist_2h_ec = experiment_collector(red12mm_4mmdist_2h, ['l', 'n'], [0, []], red12mm_4mmdist_2h) 
 
   #  hairplot_w_cstart_bar(red12mm_4mmdist_2h)
     
-#    plot_all_results(red12mm_4mmdist_2h_ec)
-
-
- #    red48mm_8mmdist_2h_ec = experiment_collector(red48mm_8mmdist_2h, ['l', 'n'])
-   #  plot_all_results(red48mm_8mmdist_2h_ec)
-
-  
-
-    
-   # four_b_ec = experiment_collector(four_b, ['l', 'd', 'n'])
-#    four_b_ec = experiment_collector(four_b + virtual, ['n'])
-#    plot_all_results(four_b_ec)
-
-
-    
-#    fbb_test = experiment_collector(['102419_1'], ['l', 'd', 'n'], ['102419_1'])
-#    plot_all_results(fbb_test)
-    
-    
-
-    # 111319_2 and _3 and 2019_4 and _6 do 20 trials in ~ 1-2 minutes. never gets a background and never moves. chuck it.
-    # if you want to get some of these trials you can write something that gets the original background. 
-    
-    # have a feeling that if there are throwout frames in the last couple,
-    # the videos stop short. there is also plenty of fish to be seen
-    # in the big barrier videos. unclear why they are lousy in the thresh. 
-
-    
-    # '042719_1' get from the big computer
-#    hd = experiment_collector(mauthners, ['l', 'n'])
-#    hd = experiment_collector(four_b, ['l', 'd', 'n'])
-#    hd = experiment_collector(mauthners, ['l', 'n'], mauthners)
- #   big_b_ec = experiment_collector(big_b, ['l', 'l'])
-
-     
+   # plot_all_results(red12mm_4mmdist_2h_ec)
 
  
- #   four_b_ec = experiment_collector(four_b, ['l', 'd', 'n'], four_b)
-  #  plot_all_results(four_b_ec)
-#    big_b_ec = experiment_collector(big_b, ['l', 'l'])
+    # dv = collect_varb_across_ec([four_b, red24mm_4mmdist, red12mm_4mmdist_2h, red12mm_4mmdist, red48mm_8mmdist_2h, red48mm_8mmdist], 'l', 'Correct Trajectory Percentage BLeft', [0, []])
 
+    # dv2 = collect_varb_across_ec([four_b, red24mm_4mmdist, red12mm_4mmdist_2h, red12mm_4mmdist, red48mm_8mmdist_2h, red48mm_8mmdist], 'l', 'Correct Trajectory Percentage BRight', [0, []])
+
+    # dv_c = collect_varb_across_ec([four_b, red24mm_4mmdist, red12mm_4mmdist_2h, red12mm_4mmdist, red48mm_8mmdist_2h, red48mm_8mmdist], 'l', 'Correct CStart Percentage', [0, []])
+
+    dv_t = collect_varb_across_ec([four_b, red24mm_4mmdist, red12mm_4mmdist_2h, red12mm_4mmdist, red48mm_8mmdist_2h, red48mm_8mmdist], 'l', 'Correct Trajectory Percentage', [0, []])
     
-
-
-
-    # GIANT RED BARRIER
-
-    # giant_b = ['111219_3', '111219_1', '111219_2',
-    #            '111219_4', '111319_1', '111319_2', '111319_3']
-    #
-    # giant = experiment_collector(giant_b, ['l'], giant_b)
-    #
-    # plot_all_results(giant)
-
-    # WHITE
-
-   
-
-    # # ABLATED
-    #
-    ### ablatepsam = ['080819_1', '080819_2', '080819_3',
-    # #           '080819_4', '080819_5', '080819_6']
-    # # p = experiment_collector(ablatepsam, ['l'], ablatepsam)
-    #
-    #
-    # ablateotp = ['100919_1',
-    #              '100919_2', '100919_3','100919_4', '100919_5',
-    #              '100919_6']
-    # # '092019_1', '092019_2', '092019_3'
-    # otpcontrol = ['101119_1', '101119_2', '101119_3','101119_4', '101119_5']
-    # o = experiment_collector(ablateotp, ['l'])
-    # oc = experiment_collector(otpcontrol, ['l'])
-    # plot_all_results(o + oc)
-
-    # FOR ALL DIST
-
-    # all_dist_list = ['043019_2', '050219_3', '050219_4']
-    # par_obj_by_trial(all_dist_list, 'l', 3)
-    # hd = experiment_collector(all_dist_list, ['l0', 'l1', 'l2'])
-
-
-    # FOR 54 vs 108 BIG
-    # l0 is close (54), l1 is far (108)
-
-    # bigred54and108 = ['052919_1', '052919_2', '053119_2',
-    #                   '053119_3', '060619_1', '060619_2',
-    #                   '060719_2', '060719_3', '060719_5']
-    # parse_obj_by_trial(bigred54and108, 'l', 2)
-    # ec1 = experiment_collector(bigred54and108, ['l0', 'l1'])  #, bigred54and108)
-    # plot_all_results(ec1)
-
-
-    # 54 SMALL and 108 BIG
-
-#     smallred54 = ['052119_1', '052119_4', '052119_5', '052219_2',
-#                   '052319_2', '052219_3', '052319_6', '052419_1',
-#                   '052419_4', '052419_5', '052319_3']
-#     bigred108 = ['052118_2', '052119_3', '052119_6', '052219_1',
-#                  '052319_1', '052319_4', '052319_5', '052419_2',
-#                  '052419_3', '052419_6']
-#     conds = ['l']
-#     ec2 = experiment_collector(smallred54, conds, smallred54)  # small
-#     ec3 = experiment_collector(bigred108, conds, bigred108)  # big
-# #    plot_all_results(ec1 + ec2)
-#     plot_all_results(ec2)
-
-
-    # Big white vs. big red at 54 and 108
-
-    # bigwhite54and108 = ['061919_1', '061919_5', '062019_3',
-    #          '062019_4', '062619_4', '062619_7']
-    # bigred54and1082 = ['061919_2', '061919_3', '062019_1',
-    #        '062019_2', '062019_5', '062119_1',
-    #        '062519_3', '062619_5', '062619_6']
-    # parse_obj_by_trial(white, 'l', 2)
-    # parse_obj_by_trial(red, 'l', 2)
-    # ec4 = experiment_collector(bigwhite54and108, ['l0'])
-    # ec5 = experiment_collector(bigred54and1082, ['l0'])
-    # ec6 = experiment_collector(bigwhite54and108, ['l1'])
-    # ec7 = experiment_collector(bigred54and1082, ['l1'])
-    # plot_all_results(ec4 + ec6)
-
-
-    # whites presented first vs. whites presented second
-
-    # wfirst = ['061919_1','061919_5','062019_4','062619_4']
-    # wsecond = ['062019_3','062619_7']
-    # w1small = experiment_collector(wfirst, ['l0'])
-    # w2small = experiment_collector(wsecond, ['l0'])
-    # w1big = experiment_collector(wfirst, ['l1'])
-    # w2big = experiment_collector(wsecond, ['l1'])
-    # plot_all_results(w1small + w2small + w1big + w2big)
-
-
-    # red presented first vs. red presented second
-
-    # rfirst = ['061919_3', '062019_2', '062119_1', '062519_3', '062619_6']
-    # rsecond = ['061919_2', '062019_1', '062019_5', '062619_5']
-    # r1small = experiment_collector(rfirst, ['l0'])
-    # r2small = experiment_collector(rsecond, ['l0'])
-    # r1big = experiment_collector(rfirst, ['l1'])
-    # r2big = experiment_collector(rsecond, ['l1'])
-    # plot_all_results(r1small + r2small + r1big + r2big)
-
-
-    # For big white 54 and big red 54 on white background
-
-    # bigwhite54 = ['071719_1','071719_2','071719_3','071719_4','071719_5',
-    #            '071719_6','071719_7','071719_8','071719_9','071719_10',
-    #            '071719_11','071719_12', '071819_1','071819_3',
-    #            '071819_4','071819_5','071019_1','071119_1']
-    # bigred54 = ['071019_2','071019_3', '071619_1', '071819_2',
-    #          '071919_1', '071919_2', '071919_3']
-    # conds = ['l']
-    # White = experiment_collector(bigwhite54, conds)
-    # Red = experiment_collector(bigred54, conds)
-    # plot_all_results(White + Red)
-
-    # MASS DATA COMBINED
-
-    # # tag bigred54 with l0
-    # bigred54label = ['071019_2','071019_3', '071619_1', '071819_2',
-    #                  '071919_1', '071919_2', '071919_3']
-    # parse_obj_by_trial(bigred54label, 'l', 1) # should make all l0
-    #
-    #
-    # allbigred54 = ['071019_2','071019_3', '071619_1', '071819_2',
-    #                '071919_1', '071919_2', '071919_3',
-    #                '061919_2', '061919_3', '062019_1',
-    #                '062019_2', '062019_5', '062119_1',
-    #                '062519_3', '062619_5', '062619_6',
-    #                '052919_1', '052919_2', '053119_2',
-    #                '053119_3', '060619_1', '060619_2',
-    #                '060719_2', '060719_3', '060719_5']
-    #
-    # ecallbigred54 = experiment_collector(allbigred54, ['l0'])
-    #
-    # allbigred108 = ['052919_1', '052919_2', '053119_2',
-    #        '053119_3', '060619_1', '060619_2',
-    #        '060719_2', '060719_3', '060719_5',
-    #        '061919_2', '061919_3', '062019_1',
-    #        '062019_2', '062019_5', '062119_1',
-    #        '062519_3', '062619_5', '062619_6']
-    #
-    # ecallbigred108 = experiment_collector(allbigred108, ['l1'])
-    #
-    # allsmallred54 = ['052119_1', '052119_4', '052119_5', '052219_2',
-    #                  '052319_2', '052219_3', '052319_6', '052419_1',
-    #                  '052419_4', '052419_5', '052319_3']
-    #
-    # ecallsmallred54 = experiment_collector(allsmallred54, ['l'])
-    #
-    # # tag bigwhite54 with l0
-    # bigwhite54label = ['071719_1','071719_2','071719_3','071719_4','071719_5',
-    #                    '071719_6','071719_7','071719_8','071719_9','071719_10',
-    #                    '071719_11','071719_12', '071819_1','071819_3',
-    #                    '071819_4','071819_5','071019_1','071119_1']
-    # parse_obj_by_trial(bigwhite54label, 'l', 1)  # should make all l0
-    #
-    # allbigwhite54 = ['071719_1','071719_2','071719_3','071719_4','071719_5',
-    #                  '071719_6','071719_7','071719_8','071719_9','071719_10',
-    #                  '071719_11','071719_12','071819_1','071819_3',
-    #                  '071819_4','071819_5','071019_1','071119_1', '061919_1',
-    #                  '061919_5', '062019_3','062019_4', '062619_4', '062619_7']
-    #
-    # ecallbigwhite54 = experiment_collector(allbigwhite54, ['l0'])
-    #
-    # allbigwhite108 = ['061919_1', '061919_5', '062019_3',
-    #                   '062019_4', '062619_4', '062619_7']
-    #
-    # ecallbigwhite108 = experiment_collector(allbigwhite54, ['l1'])
-    #
-    # plot_all_results
-
     
-
-
-
     
-#     all_dist_list = ['043019_2', '050219_3', '050219_4']
-# #    parse_obj_by_trial(all_dist_list, 'l', 3)
-#     hd = experiment_collector(all_dist_list, ['l0', 'l1', 'l2'])
+# lambda x: -1*(2*x - 1) will be the mapfunction for barrier on right
+# lambda x: (2*x - 1) will be the mapfunction for barrier on left
 
-    # FOR 54 SMALL VS 108 BIG
-    # have to write an experiment collector call for each list you want
-    # i.e. ec1 = experiment_collector(drct_list1, conds)
-    #       ec2 = experiment_collector(drct_list2, conds)
-    #       hd_both = ec1 + ec2
-    #       plot_all_results(ec1 + ec2)
-
-    # FOR 54 vs 108 BIG
-    # drct_list = [alldrcts]
-    # parse_obj_by_trial(alldrcts, 'l', 2)
-    # ec = experiment_collector(alldrcts, ['l0', 'l1'])
- #   plot_all_results(hd)
-
-    
-
-
-    
-
-    
-    # escape_cond2 = Escapes('d', esc_dir, area_thresh)
-    # escape_cond2.trial_analyzer(plotcstarts)
-    # escape_cond2.escapes_vs_barrierloc()
-    # esc_dir = os.getcwd() + '/030719_1'
-    # pl.ioff()
-    # area_thresh = 47
-    # plotcstarts = True
-    # escape_cond1 = Escapes('l', esc_dir, area_thresh)
-    # escape_cond1.trial_analyzer(plotcstarts)
-    # escape_cond1.escapes_vs_barrierloc()
-
-#    esc_l = pickle.load(open(drct + '/escapes_l.pkl', 'rb'))
-
-# HOW MANY TIMES THEY VISIT THE TRIGGER ZONE PROVIDED THEYVE ENTERED THE FOREST
-
-
-# def infer_collisions(self, barrier_escape_object, plotornot):
-
-#         def collision(xb, yb, bd, x, y):
-#             vec = np.sqrt((x - xb)**2 + (y - yb)**2)
-#             if math.isnan(x):
-#                 return False
-#             elif vec < (bd / 2) + 2:
-#                 return True
-#             else:
-#                 return False
-
-#         angle = barrier_escape_object.initial_conditions[0]
-#         mag = barrier_escape_object.initial_conditions[1]
-#         if plotornot:
-#             turn_fig = pl.figure()
-#             turn_ax = turn_fig.add_subplot(111)
-#             turn_ax.set_xlim([-100, 100])
-#             turn_ax.set_ylim([-100, 100])
-#             turn_ax.set_aspect('equal')
-#         trial_counter = 0
-#         timerange = self.timerange
-#         if 0 <= angle < np.pi / 2:
-#             barrier_x = np.sin(angle) * mag
-#             barrier_y = np.cos(angle) * mag
-#         elif angle >= np.pi / 2:
-#             barrier_x = np.sin(np.pi - angle) * mag
-#             barrier_y = -np.cos(np.pi - angle) * mag
-#         elif 0 >= angle > -np.pi / 2:
-#             barrier_x = -np.sin(-angle) * mag
-#             barrier_y = np.cos(-angle) * mag
-#         elif angle <= -np.pi / 2:
-#             barrier_x = -np.sin(np.pi + angle) * mag
-#             barrier_y = -np.cos(np.pi + angle) * mag
-#         barr = pl.Circle((barrier_x, barrier_y),
-#                          barrier_escape_object.barrier_diam / 2,
-#                          fc='r')
-
-#         collision_trials = []
-#         for xy_coords in self.xy_coords_by_trial:
-#             trial_counter += 1
-#             self.get_orientation(trial_counter, False)
-#             self.find_initial_conditions(trial_counter)
-#             ha_init = self.initial_conditions[0]
-#             if not math.isnan(ha_init):
-#                 zipped_coords = zip(xy_coords[0], xy_coords[1])
-#                 escape_coords = rotate_coords(zipped_coords, -ha_init)
-#                 x_escape = np.array(
-#                     [x for [x, y] in escape_coords[timerange[0]:timerange[1]]])
-#                 x_escape = x_escape - x_escape[0]
-#                 y_escape = np.array(
-#                     [y for [x, y] in escape_coords[timerange[0]:timerange[1]]])
-#                 y_escape = y_escape - y_escape[0]
-#                 for x_esc, y_esc in zip(x_escape, y_escape):
-#                     collide = collision(barrier_x,
-#                                         barrier_y,
-#                                         barrier_escape_object.barrier_diam,
-#                                         x_esc, y_esc)
-#                     if collide and trial_counter not in collision_trials:
-#                         collision_trials.append(trial_counter)
-#                 if plotornot:
-#                     turn_ax.plot(
-#                         outlier_filter(x_escape),
-#                         outlier_filter(y_escape), 'g')
-#                     turn_ax.text(
-#                         x_escape[-1],
-#                         y_escape[-1],
-#                         str(trial_counter),
-#                         size=10,
-#                         backgroundcolor='w')
-#         if plotornot:
-#             turn_ax.add_patch(barr)
-#             pl.show()
-#         print(len(collision_trials))
-#         print('out of')
-#         print(len(self.xy_coords_by_trial))
-#         barrier_escape_object.collision_prob.append(
-#             float(len(collision_trials)) / len(self.xy_coords_by_trial))
-
-
-
-# # this function finds the orientation to the barrier at the beginning of every barrier trial. will be called once for every trial. THEN call the above function "infer collision"
-
-#     def control_escapes(self):
-#         turn_fig = pl.figure()
-#         turn_ax = turn_fig.add_subplot(111)
-#         turn_ax.set_xlim([-100, 100])
-#         turn_ax.set_ylim([-100, 100])
-#         timerange = self.timerange
-#         x_avg = []
-#         for trial_counter, xy_coords in enumerate(self.xy_coords_by_trial):
-#             self.get_orientation(trial_counter, False)
-#             self.find_initial_conditions(trial_counter)
-#             ha_init = self.initial_conditions[0]
-#             if not math.isnan(ha_init):
-#                 zipped_coords = zip(xy_coords[0], xy_coords[1])
-#                 escape_coords = rotate_coords(zipped_coords, -ha_init)
-#                 x_escape = np.array(
-#                     [x for [x, y] in escape_coords[timerange[0]:timerange[1]]])
-# #                print(x_escape[0:10])
-#                 x_escape = x_escape - x_escape[0]
-#                 x_avg.append(np.nanmean(x_escape[self.pre_c:self.pre_c+25]))
-#                 y_escape = np.array(
-#                     [y for [x, y] in escape_coords[timerange[0]:timerange[1]]])
-#                 y_escape = y_escape - y_escape[0]
-#                 turn_ax.plot(
-#                     outlier_filter(x_escape),
-#                     outlier_filter(y_escape), 'g')
-#                 turn_ax.text(
-#                     x_escape[-1],
-#                     y_escape[-1],
-#                     str(trial_counter),
-#                     size=10,
-#                     backgroundcolor='w')
-#         pl.show()
-#         print x_avg
+   # plot_varb_over_ecs([dv, lambda x: (2*x -1)], [dv2, lambda x: -1*(2*x - 1)])
