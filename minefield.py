@@ -63,7 +63,7 @@ def ts_plot(list_of_lists, ax):
 
 
 class Condition_Collector:
-    def __init__(self, condition):
+    def __init__(self, condition, *remove_led_filter):
         self.condition = condition
         self.trajectory_win = [20, 200]
         self.escape_data = {'Heading vs Barrier': [],
@@ -91,7 +91,10 @@ class Condition_Collector:
                             'CStarts Per Trial': [0, 0]}
         self.timerange = []
         self.filter_index = 0
-
+        if remove_led_filter == ():
+            self.filter_by_led = True
+        else:
+            self.filter_by_led = False
         # here change filter index to 1 for mag, 0 for hvsb.
         # set heading vs barrier to pos or neg.
         # filter_index 0 is h_vs_b. if neg, barrier is on left. 
@@ -126,10 +129,12 @@ class Condition_Collector:
             else:
                 return True
 
-
-        if sum(escape_obj.stim_times_accurate) == 0:
-            self.rejected_fish.append(escape_obj.directory)
-            return 0
+        if self.filter_by_led:
+            if sum(escape_obj.stim_times_accurate) == 0:
+                self.rejected_fish.append(escape_obj.directory)
+                return 0
+            else:
+                self.included_fish.append(escape_obj.directory)
         else:
             self.included_fish.append(escape_obj.directory)
 
@@ -1374,15 +1379,23 @@ def magvector(vec):
     return mag
 
 
+def collect_collision_stat(fishlist, cond, height_multiplier):
+    ec_list = [experiment_collector(fish, cond, [0, []]) for fish in fishlist]
+    condition_arrays = [ec[0].convert_to_nparrays() for ec in ec_list]
+    collision_stat = [hm*float(c_array['Total Collisions']) / c_array['Total Correct Trajectories'][1] for hm, c_array in zip(height_multiplier, condition_arrays)]
+    plot_varb_over_ecs
+    return collision_stat
+    
+
+
 def collect_varb_across_ec(fishlist, cond, varb, filt):
     ec_list = [experiment_collector(fish, cond, filt) for fish in fishlist]
     condition_arrays = [ec[0].convert_to_nparrays() for ec in ec_list]
-    data_for_varb = [[cdir[~np.isnan(cdir)] for
-                      cdir in c_array[varb]] for c_array in condition_arrays]
-    filtered_data = [[f[0] for f in filter(lambda x: x.size > 0, d)] for d in data_for_varb]
+    data_for_varb = [c_array[varb] for c_array in condition_arrays]
+#   filtered_data = list(filter(lambda x: x.size > 0, data_for_varb))
 
     # come up with metric for collision normalization. use cstart bias plus collision rate. 
-    return filtered_data
+    return data_for_varb
 #    sb.boxplot(x=range(len(data_for_varb)), y=data_for_varb)
 #    pl.show()
 
@@ -1411,8 +1424,11 @@ def plot_varb_over_ecs(dv1, *dv2):
     pl.show()
     
     
-def hairplot_w_preferenceindex(fish, cond):
-    ec = make_ec_collection(fish, cond)
+def hairplot_w_preferenceindex(fish, cond, *remove_led_filter):
+    if remove_led_filter != ():
+        ec = make_ec_collection(fish, cond, 1)
+    else:
+        ec = make_ec_collection(fish, cond)
     combined_data = ec[0][0].convert_to_nparrays()
     barrier_on_right_arrays = ec[1][0].convert_to_nparrays()
     barrier_on_left_arrays = ec[2][0].convert_to_nparrays()
@@ -1492,7 +1508,7 @@ def hairplot_w_preferenceindex(fish, cond):
     axes[1].set_axis_off()
     pl.tight_layout()
     pl.show()
-    return correct_traj_percentage_b_on_left, correct_traj_percentage_b_on_right, cstart_percentage_b_on_left
+    return ec
 
 
 def plot_all_results(cond_collector_list):
@@ -1677,10 +1693,15 @@ def experiment_collector(drct_list, cond_list, filter_settings, *new_exps):
     return cond_collector_list
 
 
-def make_ec_collection(fish, cond):
-    ec_all = experiment_collector(fish, [cond], [0, []])
-    ec_r = experiment_collector(fish, [cond], [0, [0, 180]])
-    ec_l = experiment_collector(fish, [cond], [0, [-180, 0]])
+def make_ec_collection(fish, cond, *led_filter):
+    if led_filter != ():
+        ec_all = experiment_collector(fish, [cond], [0, []], 1)
+        ec_r = experiment_collector(fish, [cond], [0, [0, 180]], 1)
+        ec_l = experiment_collector(fish, [cond], [0, [-180, 0]], 1)
+    else:
+        ec_all = experiment_collector(fish, [cond], [0, []])
+        ec_r = experiment_collector(fish, [cond], [0, [0, 180]])
+        ec_l = experiment_collector(fish, [cond], [0, [-180, 0]])
     return ec_all, ec_r, ec_l
     
 
@@ -1729,7 +1750,7 @@ if __name__ == '__main__':
 # used to test stim and cstart detection -- perfect! 
 #    four_b_1 = ['022619_2', '030519_1']
 
-#    ec1 = experiment_collector(four_b, ['l'], [0, []])
+ #   ec1 = experiment_collector(four_b, ['l'], [0, []])
  #   plot_all_results(ec1)
 
     wik_mauthner_l = ['052721_1', '052821_1', '060421_1', '060421_2',
@@ -1805,12 +1826,17 @@ if __name__ == '__main__':
    # plot_all_results(red12mm_4mmdist_2h_ec)
 
  
-    # dv = collect_varb_across_ec([four_b, red24mm_4mmdist, red12mm_4mmdist_2h, red12mm_4mmdist, red48mm_8mmdist_2h, red48mm_8mmdist], 'l', 'Correct Trajectory Percentage BLeft', [0, []])
+  #  dv = collect_varb_across_ec([four_b, red24mm_4mmdist, red12mm_4mmdist_2h, red12mm_4mmdist, red48mm_8mmdist_2h, red48mm_8mmdist], 'l', 'Correct Trajectory Percentage BLeft', [0, []])
 
     # dv2 = collect_varb_across_ec([four_b, red24mm_4mmdist, red12mm_4mmdist_2h, red12mm_4mmdist, red48mm_8mmdist_2h, red48mm_8mmdist], 'l', 'Correct Trajectory Percentage BRight', [0, []])
 
     # dv_c = collect_varb_across_ec([four_b, red24mm_4mmdist, red12mm_4mmdist_2h, red12mm_4mmdist, red48mm_8mmdist_2h, red48mm_8mmdist], 'l', 'Correct CStart Percentage', [0, []])
 
+    # dv_c1 = collect_varb_across_ec([four_b, red24mm_4mmdist, red12mm_4mmdist_2h, red12mm_4mmdist, red48mm_8mmdist_2h, red48mm_8mmdist], 'l', 'Correct CStart Percentage', [0, [0, 180]])
+
+    # dv_c2 = collect_varb_across_ec([four_b, red24mm_4mmdist, red12mm_4mmdist_2h, red12mm_4mmdist, red48mm_8mmdist_2h, red48mm_8mmdist], 'l', 'Correct CStart Percentage', [0, [-180, 0]])
+
+    
     dv_t = collect_varb_across_ec([four_b, red24mm_4mmdist, red12mm_4mmdist_2h, red12mm_4mmdist, red48mm_8mmdist_2h, red48mm_8mmdist], 'l', 'Correct Trajectory Percentage', [0, []])
     
     
@@ -1818,4 +1844,12 @@ if __name__ == '__main__':
 # lambda x: -1*(2*x - 1) will be the mapfunction for barrier on right
 # lambda x: (2*x - 1) will be the mapfunction for barrier on left
 
-   # plot_varb_over_ecs([dv, lambda x: (2*x -1)], [dv2, lambda x: -1*(2*x - 1)])
+  #  plot_varb_over_ecs([dv_c1, lambda x: (2*x -1)], [dv_c2, lambda x: -1*(2*x - 1)])
+
+
+# TODO 9/20/2021
+
+# get a collision metric for each condition collector. the collision metric is the
+# amount of collisions total divided by the number of incorrect decisions.
+
+# do mauthner trajectory analysis. 
