@@ -1439,7 +1439,10 @@ def plot_varb_over_ecs(dv1, *dv2):
     pl.show()
 
 
-# enter complete experiment collectors (not filtered) here. 
+# enter complete experiment collectors (not filtered) here.
+
+# mauthner ablations on the left should show favored escapes to the left. then when barrier is on right,
+# should all go left. when barrier is on right, should be a mix. 
 
 def pairwise_l_to_n_plot(l_cc, n_cc):
     fig, axes = pl.subplots(1, 2)
