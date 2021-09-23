@@ -1439,23 +1439,78 @@ def plot_varb_over_ecs(dv1, *dv2):
     pl.show()
 
 
-# enter complete experiment collectors (not filtered) here. 
+# enter complete experiment collectors (not filtered) here.
 
-def pairwise_l_to_n_plot(l_cc, n_cc):
-    fig, axes = pl.subplots(1, 2)
-    for fish_ind, fish in enumerate(l_cc.included_fish):
+# this plot shows that the escape away from barriers on the side of the ablated mauthner is enhanced relative to
+# escapes toward the ablated mauthner in N trials. escapes away from the ablated mauthner are unchanged -- should go down
+# in cases where barrier is on the side of the intact mauthner. 
+
+
+def pairwise_l_to_n_plot(ec_left, ec_right):
+    sb.set(style="ticks", rc={"lines.linewidth": .75})
+    # quantify this using turns towards the ablated mauthner.
+    # barrier on side of ablated mauthner vs opposite.
+    fig, axes = pl.subplots(1, 2, sharey=True)
+    l_leftplot = []
+    l_rightplot = []
+    n_leftplot = []
+    n_rightplot = []
+    for fish_ind, fish in enumerate(ec_left[0].included_fish):
         try:
-            n_trial_index = n_cc.included_fish.index(fish)
+            n_trial_index = ec_left[1].included_fish.index(fish)
         except ValueError:
             print("VAL ERROR")
             continue
-        cp_bright = l_cc.escape_data['Correct Trajectory Percentage BRight'][fish_ind]
-        cp_bleft = l_cc.escape_data['Correct Trajectory Percentage BLeft'][fish_ind]
-        left_percentage_control = n_cc.escape_data['Left Traj Percentage'][n_trial_index]
+        cp_bright = ec_left[0].escape_data['Correct Trajectory Percentage BRight'][fish_ind]
+        cp_bleft = ec_left[0].escape_data['Correct Trajectory Percentage BLeft'][fish_ind]
+        left_percentage_control = ec_left[1].escape_data['Left Traj Percentage'][n_trial_index]
         sb.lineplot(x=np.array([0, 1]), y=np.array([left_percentage_control, cp_bright]),
-                    ax=axes[0], markers=True)
+                    ax=axes[0], markers=True, marker='.')
         sb.lineplot(x=np.array([0, 1]), y=np.array([1-left_percentage_control, cp_bleft]),
-                    ax=axes[1], markers=True)
+                    ax=axes[1], markers=True, marker='.')
+
+        if math.isfinite(cp_bright):
+            n_leftplot.append(left_percentage_control)        
+            l_leftplot.append(cp_bright)
+
+        if math.isfinite(cp_bleft):
+            n_rightplot.append(1-left_percentage_control)
+            l_rightplot.append(cp_bleft)
+            
+    for fish_ind, fish in enumerate(ec_right[0].included_fish):
+        try:
+            n_trial_index = ec_right[1].included_fish.index(fish)
+        except ValueError:
+            print("VAL ERROR")
+            continue
+        cp_bright = ec_right[0].escape_data['Correct Trajectory Percentage BRight'][fish_ind]
+        cp_bleft = ec_right[0].escape_data['Correct Trajectory Percentage BLeft'][fish_ind]
+        right_percentage_control = 1-ec_right[1].escape_data['Left Traj Percentage'][n_trial_index]
+        sb.lineplot(x=np.array([0, 1]), y=np.array([right_percentage_control, cp_bleft]),
+                    ax=axes[0], markers=True, marker='.')
+        sb.lineplot(x=np.array([0, 1]), y=np.array([1-right_percentage_control, cp_bright]),
+                    ax=axes[1], markers=True, marker='.')
+
+        if math.isfinite(cp_bleft):
+            n_leftplot.append(right_percentage_control)        
+            l_leftplot.append(cp_bleft)
+
+        if math.isfinite(cp_bright):
+            n_rightplot.append(1-right_percentage_control)
+            l_rightplot.append(cp_bright)
+        
+    fig2, axes2 = pl.subplots(1, 2, sharey=True)
+    sb.pointplot(x=np.concatenate([np.zeros(len(n_leftplot)), np.ones(len(l_leftplot))]),
+                 y=np.concatenate([n_leftplot, l_leftplot]), color='k', ax=axes2[0]) # ci='sd')
+    sb.pointplot(x=np.concatenate([np.zeros(len(n_rightplot)), np.ones(len(l_rightplot))]),
+                 y=np.concatenate([n_rightplot, l_rightplot]), color='k', ax=axes2[1]) #ci='sd')
+
+    axes[0].set_ylim([0, 1.2])
+    axes2[0].set_ylim([0, 1.2])
+    print(scipy.stats.ttest_rel(n_leftplot, l_leftplot))
+    print(scipy.stats.ttest_rel(n_rightplot, l_rightplot))
+    
+
     pl.show()
 
         
@@ -1797,7 +1852,7 @@ if __name__ == '__main__':
                       '060321_4', '060321_5', '060321_6', '060321_7',
                       '060421_8', '061021_4', '061021_5']
 
-   # mauth_l_ec = experiment_collector(wik_mauthner_l, ['l', 'n'], [0, [], 0]) #, wik_mauthner_l)
+  #  mauth_l_ec = experiment_collector(wik_mauthner_l, ['l', 'n'], [0, [], 0]) #, wik_mauthner_l)
 #    plot_all_results(mauth_l_ec)
    # mauth_r_ec = experiment_collector(wik_mauthner_r, ['l', 'n'], [0, [], 0]) # wik_mauthner_r)
  #   plot_all_results(mauth_r_ec)
