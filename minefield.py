@@ -157,7 +157,6 @@ class Condition_Collector:
                     print(trialfilter)
                 else:
                     trialfilter = list(range(len(escape_obj.xy_coords_by_trial)))
-                    print("TRIALFILTER IN LEN XY")
                     print(trialfilter)
             else:
                 right_or_wrong = self.filter_range[0]
@@ -291,7 +290,8 @@ class Condition_Collector:
             print(len(bl))
             print(trialfilter)
             print(self.filter_by_led)
-            self.escape_data['Correct Trajectory Percentage'].append((br_correct_moves + bl_correct_moves)/(len(br) + len(bl)))
+            self.escape_data['Correct Trajectory Percentage'].append(np.float64(br_correct_moves + bl_correct_moves) /
+                                                                     (len(br) + len(bl)))
             self.escape_data['Correct Trajectory Percentage BRight'].append(np.float64(br_correct_moves) / len(br))
             self.escape_data['Correct Trajectory Percentage BLeft'].append(np.float64(bl_correct_moves) / len(bl))
             self.escape_data['Total Correct Trajectories'][0] += (bl_correct_moves + br_correct_moves)
@@ -299,7 +299,7 @@ class Condition_Collector:
             print(escape_obj.directory)
             self.escape_data['Left Vs Right Trajectories'][0] += total_left
             self.escape_data['Left Vs Right Trajectories'][1] += total_right
-            self.escape_data['Left Traj Percentage'].append(total_left / (total_left + total_right))
+            self.escape_data['Left Traj Percentage'].append(np.float64(total_left) / (total_left + total_right))
             
             last_xy = zip(last_x, last_y)
 
@@ -1426,7 +1426,7 @@ def plot_varb_over_ecs(dv1, *dv2):
         xv_concat2 = np.concatenate(xvals2)
         yvals2 = list(map(mapfunc2, np.concatenate(dv2)))
         sb.pointplot(x=xv_concat2, y=yvals2, color='deeppink')
-        sb.stripplot(x=xv_concat2, y=yvals2, dodge=False, alpha=.2, zorder=0, jitter=.005, color='deeppink')
+ #       sb.stripplot(x=xv_concat2, y=yvals2, dodge=False, alpha=.2, zorder=0, jitter=.005, color='deeppink')
     dv, mapfunc = dv1
     xvals = []
     print(dv)
@@ -1435,7 +1435,8 @@ def plot_varb_over_ecs(dv1, *dv2):
     xv_concat = np.concatenate(xvals)
     yvals = list(map(mapfunc, np.concatenate(dv)))
     sb.pointplot(x=xv_concat, y=yvals, color='dodgerblue')
-    sb.stripplot(x=xv_concat, y=yvals, dodge=False, alpha=.2, zorder=0, jitter=.005, color='dodgerblue')
+#    sb.stripplot(x=xv_concat, y=yvals, dodge=False, alpha=.2, zorder=0, jitter=.005, color='dodgerblue')
+    sb.despine()
     pl.show()
 
 
@@ -1445,6 +1446,12 @@ def plot_varb_over_ecs(dv1, *dv2):
 # escapes toward the ablated mauthner in N trials. escapes away from the ablated mauthner are unchanged -- should go down
 # in cases where barrier is on the side of the intact mauthner. 
 
+# left plot shows the propensity to escape in the direction dictated by the intact mauthner.
+# it shows that when the fish encounters a barrier on the side of the intact mauthner, it escapes away more
+# frequently than expected from the control case -- this can't be inhibition of the opposite mauthner, because it isn't there. 
+
+# right plot shows the propensity to escape in the direction dictated by the
+# ablated mauthner. if the fish encounters a barrier on the side of the ablated mauthner, it escapes in the direction dictated by the ablated mauthner at the same frequency as in control conditions, indicating that an intact mauthner is required for the bias, and that the bias is excitatory (if it were inhibitory to the opposite mauthner, would see a shift). 
 
 def pairwise_l_to_n_plot(ec_left, ec_right):
     sb.set(style="ticks", rc={"lines.linewidth": .75})
@@ -1503,7 +1510,7 @@ def pairwise_l_to_n_plot(ec_left, ec_right):
     sb.pointplot(x=np.concatenate([np.zeros(len(n_leftplot)), np.ones(len(l_leftplot))]),
                  y=np.concatenate([n_leftplot, l_leftplot]), color='k', ax=axes2[0]) # ci='sd')
     sb.pointplot(x=np.concatenate([np.zeros(len(n_rightplot)), np.ones(len(l_rightplot))]),
-                 y=np.concatenate([n_rightplot, l_rightplot]), color='k', ax=axes2[1]) #ci='sd')
+                 y=np.concatenate([n_rightplot, l_rightplot]), color='k', ax=axes2[1])
 
     axes[0].set_ylim([0, 1.2])
     axes2[0].set_ylim([0, 1.2])
@@ -1829,10 +1836,7 @@ if __name__ == '__main__':
               '042719_1', '102319_1', '102319_2', '102419_1',
               '102519_1', '110219_1', '110219_2']
 
-#    hairplot_w_cstart_bar(virtual, 'v')
-#    hairplot_w_cstart_bar(four_w, 'l')
-
-    #cp = hairplot_w_preferenceindex(four_b, 'l')
+ #   cp = hairplot_w_preferenceindex(four_b, 'l', 1)
 
 
 # used to test stim and cstart detection -- perfect! 
@@ -1848,13 +1852,14 @@ if __name__ == '__main__':
                       '061021_3', '061021_6']
 
     wik_mauthner_r = ['052721_2', '052721_3', '052821_2', '052821_3',
-                      '052821_4', '060321_1', '060321_2', '060321_3',
+                      '052821_4', '060321_1', '060321_2',
                       '060321_4', '060321_5', '060321_6', '060321_7',
                       '060421_8', '061021_4', '061021_5']
 
-  #  mauth_l_ec = experiment_collector(wik_mauthner_l, ['l', 'n'], [0, [], 0]) #, wik_mauthner_l)
+#    mauth_l_ec = experiment_collector(wik_mauthner_l, ['l', 'n'], [0, [], 0]) #, wik_mauthner_l)
 #    plot_all_results(mauth_l_ec)
-   # mauth_r_ec = experiment_collector(wik_mauthner_r, ['l', 'n'], [0, [], 0]) # wik_mauthner_r)
+#    mauth_r_ec = experiment_collector(wik_mauthner_r, ['l', 'n'], [0, [], 0]) # wik_mauthner_r)
+#    pairwise_l_to_n_plot(mauth_l_ec, mauth_r_ec)
  #   plot_all_results(mauth_r_ec)
     
     red24mm_4mmdist = ['061121_1', '061121_2', '061121_3', '061121_4',
@@ -1898,8 +1903,6 @@ if __name__ == '__main__':
   #  red48mm_8mmdist_2h_ec = experiment_collector(red48mm_8mmdist_2h, ['l', 'n'], [0, [], 1], red48mm_8mmdist_2h)
   #  plot_all_results(red48mm_8mmdist_2h_ec)
 
-    
-
     red12mm_4mmdist_2h = ["072921_1", "072921_2", "072921_4", "073021_1",
                           "073021_2", "073021_3", "073021_4", "073021_5",
                           "073021_7", "073021_8", "073021_9", "080221_2",
@@ -1908,15 +1911,13 @@ if __name__ == '__main__':
 
     fishlist = [four_b, red24mm_4mmdist, red12mm_4mmdist_2h, red12mm_4mmdist, red48mm_8mmdist_2h, red48mm_8mmdist]
     
-   # collect_collision_stat(fishlist, 'l', np.ones(len(fishlist)), [0, [], 1])
+    collect_collision_stat(fishlist, 'l', np.ones(len(fishlist)), [0, [], 1])
 
    # hairplot_w_preferenceindex(wik_mauthner_l, 'l', 0)
 
    # hairplot_w_preferenceindex(wik_mauthner_r, 'n', 0)
 
-    
-
-   # hairplot_w_preferenceindex(red12mm_4mmdist, 'l', 1)
+  #  hairplot_w_preferenceindex(red12mm_4mmdist, 'l', 1)
 
 
     # Need a pairwise statistic for the mauthners. How biased before the trial? If all of the mistake escapes come
@@ -1933,27 +1934,27 @@ if __name__ == '__main__':
    # plot_all_results(red12mm_4mmdist_2h_ec)
 
  
-  #  dv = collect_varb_across_ec([four_b, red24mm_4mmdist, red12mm_4mmdist_2h, red12mm_4mmdist, red48mm_8mmdist_2h, red48mm_8mmdist], 'l', 'Correct Trajectory Percentage BLeft', [0, [], 1])
+ #   dv = collect_varb_across_ec([four_b, red24mm_4mmdist, red12mm_4mmdist_2h, red12mm_4mmdist, red48mm_8mmdist_2h, red48mm_8mmdist], 'l', 'Correct Trajectory Percentage BLeft', [0, [], 1])
 
-    # dv2 = collect_varb_across_ec([four_b, red24mm_4mmdist, red12mm_4mmdist_2h, red12mm_4mmdist, red48mm_8mmdist_2h, red48mm_8mmdist], 'l', 'Correct Trajectory Percentage BRight', [0, [], 1])
+ #   dv2 = collect_varb_across_ec([four_b, red24mm_4mmdist, red12mm_4mmdist_2h, red12mm_4mmdist, red48mm_8mmdist_2h, red48mm_8mmdist], 'l', 'Correct Trajectory Percentage BRight', [0, [], 1])
 
-    # dv_c = collect_varb_across_ec([four_b, red24mm_4mmdist, red12mm_4mmdist_2h, red12mm_4mmdist, red48mm_8mmdist_2h, red48mm_8mmdist], 'l', 'Correct CStart Percentage', [0, [], 1])
+  #   dv_c = collect_varb_across_ec([four_b, red24mm_4mmdist, red12mm_4mmdist_2h, red12mm_4mmdist, red48mm_8mmdist_2h, red48mm_8mmdist], 'l', 'Correct CStart Percentage', [0, [], 1])
 
     # dv_c1 = collect_varb_across_ec([four_b, red24mm_4mmdist, red12mm_4mmdist_2h, red12mm_4mmdist, red48mm_8mmdist_2h, red48mm_8mmdist], 'l', 'Correct CStart Percentage', [0, [0, 180], 1])
 
     # dv_c2 = collect_varb_across_ec([four_b, red24mm_4mmdist, red12mm_4mmdist_2h, red12mm_4mmdist, red48mm_8mmdist_2h, red48mm_8mmdist], 'l', 'Correct CStart Percentage', [0, [-180, 0], 1])
 
     
-  #  dv_t = collect_varb_across_ec([four_b, red24mm_4mmdist, red12mm_4mmdist_2h, red12mm_4mmdist, red48mm_8mmdist_2h, red48mm_8mmdist], 'l', 'Correct Trajectory Percentage', [0, [], 1])
+#    dv_t = collect_varb_across_ec([four_b, red24mm_4mmdist, red12mm_4mmdist_2h, red12mm_4mmdist, red48mm_8mmdist_2h, red48mm_8mmdist], 'l', 'Correct Trajectory Percentage', [0, [], 1])
 
 
-   #  plot_varb_over_ecs([dv_t, lambda x: x])
+    plot_varb_over_ecs([dv_c, lambda x: x])
    # plot_varb_over_ecs([dv_t, lambda x: (2*x -1)])
     
 # lambda x: -1*(2*x - 1) will be the mapfunction for barrier on right
 # lambda x: (2*x - 1) will be the mapfunction for barrier on left
 
-  #  plot_varb_over_ecs([dv_c1, lambda x: (2*x -1)], [dv_c2, lambda x: -1*(2*x - 1)])
+#    plot_varb_over_ecs([dv, lambda x: (2*x -1)], [dv2, lambda x: -1*(2*x - 1)])
 
 
 # TODO 9/20/2021
