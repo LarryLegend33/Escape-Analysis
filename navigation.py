@@ -60,8 +60,8 @@ def proximity_calculator(nav_list, condition, b_color, *value_range):
         min_proxmat = np.min(filt_proxmat[filt_proxmat > 0])
         max_proxmat = np.max(filt_proxmat)
  
-#    sb.heatmap(filt_proxmat, center=(max_proxmat - min_proxmat) / 2, cmap='viridis')
-    sb.heatmap(filt_proxmat, center=(max_proxmat - min_proxmat) / 2, cmap='icefire')
+    sb.heatmap(filt_proxmat, center=(max_proxmat - min_proxmat) / 2, cmap='viridis')
+#    sb.heatmap(filt_proxmat, center=(max_proxmat - min_proxmat) / 2, cmap='icefire')
 #    sb.heatmap(proximity_matrix)
     bounds = pl.Circle(barrier_location,
                        scale_factor, ec='k', fc='None')
@@ -127,8 +127,10 @@ class Navigator:
                 vec_to_barrier[np.argmin(vec_mags)])
             
     def plot_xy_experiment(self, facecolors):
+        pcolors = sb.color_palette('viridis')
         fig = pl.figure()
-        axes = fig.add_subplot(111, facecolor='.25')
+#        axes = fig.add_subplot(111, facecolor='.25')
+        axes = fig.add_subplot(111, facecolor=pcolors[0])
         axes.grid(False)
         for br, bd, f in zip(self.barrier_coords, self.barrier_diams, facecolors):
             barrier_x = br[0]
@@ -137,7 +139,8 @@ class Navigator:
             barrier_plot = pl.Circle((barrier_x, barrier_y),
                                      barrier_diameter / 2, fc=f)
             axes.add_artist(barrier_plot)
-        axes.plot(self.xy_coords[:, 0], self.xy_coords[:, 1], linewidth=1.0)
+        axes.plot(self.xy_coords[:, 0], self.xy_coords[:, 1], linewidth=1.0,
+                  color=pcolors[3])
         axes.axis('equal')
         pl.show()
 
@@ -495,7 +498,7 @@ blackandred_b = ["061219_2", "061219_3", "061219_4",
                  "061319_1", "061319_2", "061319_3"]
 
 navs_white = proximity_calculator(white_b, exp_type, [1, 1, 1])
-navs_red = proximity_calculator(red_b, exp_type, [1, 0, 0], navs_white[1])
+#navs_red = proximity_calculator(red_b, exp_type, [1, 0, 0], navs_white[1])
 #navs_big = proximity_calculator(red_2xheight_4xwide, exp_type, [1, 0, 0])  #, navs_white[1])
 
 #navs_whiteandred = proximity_calculator(whiteandred_b, exp_type, [1, 1, 1], navs_white[1])
