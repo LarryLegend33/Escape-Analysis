@@ -16,6 +16,7 @@ from collections import deque
 from toolz.itertoolz import sliding_window, partition
 from scipy.ndimage import gaussian_filter
 from scipy.signal import argrelmin, argrelmax, argrelextrema
+from scipy.stats import ttest_ind, ttest_rel
 from astropy.convolution import convolve, Gaussian1DKernel
 import itertools as itz
 import pandas as pd
@@ -1405,19 +1406,33 @@ def get_n_trajectories(fish_experiment_list):
             all_n_y += [ty[1] for ty in all_traj]
     return [all_n_x, all_n_y]
         
-            
-            
+
+def plot_collision_stat(all_collisions, num_n_trials):
+    collision_stats_to_percentage = [list(map(
+        lambda x: np.sum(x) / (num_n_trials * len(x)), cp)) for cp in all_collisions]
+    xvals = []
+    for i, d in enumerate(collision_stats_to_percentage):
+        xvals.append(i*np.ones(len(d)))
+        xv_concat = np.concatenate(xvals)
+        yvals = np.concatenate(collision_stats_to_percentage)
+    sb.pointplot(x=xv_concat, y=yvals, color='k')
+    pl.show()
+    return collision_stats_to_percentage
+    
 
 def infer_collisions(fish_experiment_list, plotornot):
-
     all_n_trajectories = get_n_trajectories(fish_experiment_list)
     x_escape_n, y_escape_n = all_n_trajectories
+    print(len(x_escape_n))
+    collisions_across_all_conditions = []
     for drct_list in fish_experiment_list:
-        for drct in drct_list:
-            drct = '/Volumes/Esc_and_2P/Escape_Results/' + drct
+        collisions_given_condition = []
+        for drcty in drct_list:
+            drct = '/Volumes/Esc_and_2P/Escape_Results/' + drcty
+            collisions_per_fish = []
             try:
                 esc_obj = pickle.load(open(
-                    drct + '/escapes_' + 'l' + '.pkl', 'rb'))
+                    drct + '/escapes_l.pkl', 'rb'))
             except IOError:
                 print(drct)
                 print("PICKLING ERROR")
@@ -1425,12 +1440,7 @@ def infer_collisions(fish_experiment_list, plotornot):
 
             for trial, xy in enumerate(esc_obj.xy_coords_by_trial):
                 angle, mag = esc_obj.initial_conditions[trial][0:2]
-                if plotornot:
-                    turn_fig = pl.figure()
-                    turn_ax = turn_fig.add_subplot(111)
-                    turn_ax.set_xlim([-100, 100])
-                    turn_ax.set_ylim([-100, 100])
-                    turn_ax.set_aspect('equal')
+                mag += (esc_obj.barrier_diam / 2)
                 if 0 <= angle < np.pi / 2:
                     barrier_x = np.sin(angle) * mag
                     barrier_y = np.cos(angle) * mag
@@ -1443,35 +1453,30 @@ def infer_collisions(fish_experiment_list, plotornot):
                 elif angle <= -np.pi / 2:
                     barrier_x = -np.sin(np.pi + angle) * mag
                     barrier_y = -np.cos(np.pi + angle) * mag
-                barr = pl.Circle((barrier_x, barrier_y), esc_obj.barrier_diam / 2,
-                                 fc='r')
-
-                collision_trials = []
+                if plotornot:
+                    turn_fig = pl.figure()
+                    turn_ax = turn_fig.add_subplot(111)
+                    turn_ax.set_xlim([-200, 200])
+                    turn_ax.set_ylim([-200, 200])
+                    turn_ax.set_aspect('equal')
+                    barr = pl.Circle((barrier_x, barrier_y), esc_obj.barrier_diam / 2,
+                                          fc='r')
+                    turn_ax.add_artist(barr)
+                collisions = 0
                 for x_esc, y_esc in zip(x_escape_n, y_escape_n):
-                    collide = collision(barrier_x,
-                                        barrier_y,
-                                        esc_obj.barrier_diam,
-                                        x_esc, y_esc)
-                    if collide and trial_counter not in collision_trials:
-                        collision_trials.append(trial_counter)
-    #                 if plotornot:
-    #                     turn_ax.plot(
-    #                         outlier_filter(x_escape),
-    #                         outlier_filter(y_escape), 'g')
-    #                     turn_ax.text(
-    #                         x_escape[-1],
-    #                         y_escape[-1],
-    #                         str(trial_counter),
-    #                         size=10,
-    #                         backgroundcolor='w')
-
-
-        
-        
-        
-
-
-
+                    collide = [collision(barrier_x,
+                                         barrier_y,
+                                         esc_obj.barrier_diam, x, y)
+                               for x, y in zip(x_esc, y_esc)]
+                    if plotornot:
+                        turn_ax.plot(x_esc, y_esc)
+                    if sum(collide) > 1:
+                        collisions += 1
+                collisions_per_fish.append(collisions)
+            collisions_given_condition.append(collisions_per_fish)
+        collisions_across_all_conditions.append(collisions_given_condition)
+    return collisions_across_all_conditions, len(x_escape_n)
+                        
 
 
 def collect_varb_across_ec(fishlist, cond, varb, filt):
@@ -1935,6 +1940,10 @@ if __name__ == '__main__':
               '042719_1', '102319_1', '102319_2', '102419_1',
               '102519_1', '110219_1', '110219_2']
 
+    four_b_test = ['022619_2', '030519_1', '030519_2', '030719_1']
+    collision_stats, num_n_trials = infer_collisions(fishlist, False)
+    
+    
    # cp = hairplot_w_preferenceindex(four_b, 'd', 1)
 
   #  cp = hairplot_w_preferenceindex(virtual, 'v', 1)
@@ -1943,7 +1952,7 @@ if __name__ == '__main__':
 # used to test stim and cstart detection -- perfect! 
 #    four_b_1 = ['022619_2', '030519_1']
 
-    ec1 = experiment_collector(four_b, ['l'], [0, [], 1])
+ #   ec1 = experiment_collector(four_b, ['l'], [0, [], 1])
 #    cstart_angle, cstart_latency = plot_all_results(ec1)
 
     wik_mauthner_l = ['052721_1', '060421_1',
@@ -2013,11 +2022,11 @@ if __name__ == '__main__':
                           "080221_3", "080221_4", "080221_5", "080221_6",
                           "080221_7", "080321_1", "080321_2", "080321_3"]
 
- #   fishlist = [four_b, red24mm_4mmdist, red12mm_4mmdist_2h, red12mm_4mmdist, red48mm_8mmdist_2h, red48mm_8mmdist]
+    fishlist = [four_b, red24mm_4mmdist, red12mm_4mmdist_2h, red12mm_4mmdist, red48mm_8mmdist_2h, red48mm_8mmdist]
     
 #    collect_collision_stat(fishlist, 'l', np.ones(len(fishlist)), [0, [], 1])
 
-    hairplot_w_preferenceindex(wik_mauthner_l, 'n', 0, "black")
+#    hairplot_w_preferenceindex(wik_mauthner_l, 'n', 0, "black")
 
 #    hairplot_w_preferenceindex(wik_mauthner_r, 'n', 0, "black")
 
@@ -2037,9 +2046,9 @@ if __name__ == '__main__':
     
    # plot_all_results(red12mm_4mmdist_2h_ec)
 
-    dv = collect_varb_across_ec([four_b, red24mm_4mmdist, red12mm_4mmdist_2h, red12mm_4mmdist, red48mm_8mmdist_2h, red48mm_8mmdist], 'l', 'Correct Trajectory Percentage BLeft', [0, [], 1])
+ #   dv = collect_varb_across_ec([four_b, red24mm_4mmdist, red12mm_4mmdist_2h, red12mm_4mmdist, red48mm_8mmdist_2h, red48mm_8mmdist], 'l', 'Correct Trajectory Percentage BLeft', [0, [], 1])
 
-    dv2 = collect_varb_across_ec([four_b, red24mm_4mmdist, red12mm_4mmdist_2h, red12mm_4mmdist, red48mm_8mmdist_2h, red48mm_8mmdist], 'l', 'Correct Trajectory Percentage BRight', [0, [], 1])
+ #   dv2 = collect_varb_across_ec([four_b, red24mm_4mmdist, red12mm_4mmdist_2h, red12mm_4mmdist, red48mm_8mmdist_2h, red48mm_8mmdist], 'l', 'Correct Trajectory Percentage BRight', [0, [], 1])
 
   #  dv_c = collect_varb_across_ec([four_b, red24mm_4mmdist, red12mm_4mmdist_2h, red12mm_4mmdist, red48mm_8mmdist_2h, red48mm_8mmdist], 'l', 'Correct CStart Percentage', [0, [], 1])
 
@@ -2047,9 +2056,9 @@ if __name__ == '__main__':
   #  dv_ltp = collect_varb_across_ec([four_b, red24mm_4mmdist, red12mm_4mmdist_2h, red12mm_4mmdist, red48mm_8mmdist_2h, red48mm_8mmdist], 'n', 'Left Traj Percentage', [0, [], 1])
 
 
-    dv_mauthner_l = collect_varb_across_ec([wik_mauthner_l], 'n', 'Left Traj Percentage', [0, [], 0])
+  #  dv_mauthner_l = collect_varb_across_ec([wik_mauthner_l], 'n', 'Left Traj Percentage', [0, [], 0])
 
-    dv_mauthner_r = collect_varb_across_ec([wik_mauthner_r], 'n', 'Left Traj Percentage', [0, [], 0])
+  #  dv_mauthner_r = collect_varb_across_ec([wik_mauthner_r], 'n', 'Left Traj Percentage', [0, [], 0])
 
     
     # dv_c1 = collect_varb_across_ec([four_b, red24mm_4mmdist, red12mm_4mmdist_2h, red12mm_4mmdist, red48mm_8mmdist_2h, red48mm_8mmdist], 'l', 'Correct CStart Percentage', [0, [0, 180], 1])
@@ -2084,123 +2093,6 @@ if __name__ == '__main__':
 
 # this is a function you can call on no barrier escape objects. (e.g. escape_nb.infer_collisions(escape_obj_w_barrier). generalize it to many compiled escapes -- each obj now has an initial condition already called. 
 
-# def infer_collisions(self, barrier_escape_object, plotornot):
-
-#         def collision(xb, yb, bd, x, y):
-#             vec = np.sqrt((x - xb)**2 + (y - yb)**2)
-#             if math.isnan(x):
-#                 return False
-#             elif vec < (bd / 2) + 2:
-#                 return True
-#             else:
-#                 return False
-
-#         angle = barrier_escape_object.initial_conditions[0]
-#         mag = barrier_escape_object.initial_conditions[1]
-#         if plotornot:
-#             turn_fig = pl.figure()
-#             turn_ax = turn_fig.add_subplot(111)
-#             turn_ax.set_xlim([-100, 100])
-#             turn_ax.set_ylim([-100, 100])
-#             turn_ax.set_aspect('equal')
-#         trial_counter = 0
-#         timerange = self.timerange
-#         if 0 <= angle < np.pi / 2:
-#             barrier_x = np.sin(angle) * mag
-#             barrier_y = np.cos(angle) * mag
-#         elif angle >= np.pi / 2:
-#             barrier_x = np.sin(np.pi - angle) * mag
-#             barrier_y = -np.cos(np.pi - angle) * mag
-#         elif 0 >= angle > -np.pi / 2:
-#             barrier_x = -np.sin(-angle) * mag
-#             barrier_y = np.cos(-angle) * mag
-#         elif angle <= -np.pi / 2:
-#             barrier_x = -np.sin(np.pi + angle) * mag
-#             barrier_y = -np.cos(np.pi + angle) * mag
-#         barr = pl.Circle((barrier_x, barrier_y),
-#                          barrier_escape_object.barrier_diam / 2,
-#                          fc='r')
-
-#         collision_trials = []
-#         for xy_coords in self.xy_coords_by_trial:
-#             trial_counter += 1
-#             self.get_orientation(trial_counter, False)
-#             self.find_initial_conditions(trial_counter)
-#             ha_init = self.initial_conditions[0]
-#             if not math.isnan(ha_init):
-#                 zipped_coords = zip(xy_coords[0], xy_coords[1])
-#                 escape_coords = rotate_coords(zipped_coords, -ha_init)
-#                 x_escape = np.array(
-#                     [x for [x, y] in escape_coords[timerange[0]:timerange[1]]])
-#                 x_escape = x_escape - x_escape[0]
-#                 y_escape = np.array(
-#                     [y for [x, y] in escape_coords[timerange[0]:timerange[1]]])
-#                 y_escape = y_escape - y_escape[0]
-#                 for x_esc, y_esc in zip(x_escape, y_escape):
-#                     collide = collision(barrier_x,
-#                                         barrier_y,
-#                                         barrier_escape_object.barrier_diam,
-#                                         x_esc, y_esc)
-#                     if collide and trial_counter not in collision_trials:
-#                         collision_trials.append(trial_counter)
-#                 if plotornot:
-#                     turn_ax.plot(
-#                         outlier_filter(x_escape),
-#                         outlier_filter(y_escape), 'g')
-#                     turn_ax.text(
-#                         x_escape[-1],
-#                         y_escape[-1],
-#                         str(trial_counter),
-#                         size=10,
-#                         backgroundcolor='w')
-#         if plotornot:
-#             turn_ax.add_patch(barr)
-#             pl.show()
-#         print(len(collision_trials))
-#         print('out of')
-#         print(len(self.xy_coords_by_trial))
-#         barrier_escape_object.collision_prob.append(
-#             float(len(collision_trials)) / len(self.xy_coords_by_trial))
-
-
-
-# # this function finds the orientation to the barrier at the beginning of every barrier trial. will be called once for every trial. THEN call the above function "infer collision"
-
-#     def control_escapes(self):
-#         turn_fig = pl.figure()
-#         turn_ax = turn_fig.add_subplot(111)
-#         turn_ax.set_xlim([-100, 100])
-#         turn_ax.set_ylim([-100, 100])
-#         timerange = self.timerange
-#         x_avg = []
-#         for trial_counter, xy_coords in enumerate(self.xy_coords_by_trial):
-#             self.get_orientation(trial_counter, False)
-#             self.find_initial_conditions(trial_counter)
-#             ha_init = self.initial_conditions[0]
-#             if not math.isnan(ha_init):
-#                 zipped_coords = zip(xy_coords[0], xy_coords[1])
-#                 escape_coords = rotate_coords(zipped_coords, -ha_init)
-#                 x_escape = np.array(
-#                     [x for [x, y] in escape_coords[timerange[0]:timerange[1]]])
-# #                print(x_escape[0:10])
-#                 x_escape = x_escape - x_escape[0]
-#                 x_avg.append(np.nanmean(x_escape[self.pre_c:self.pre_c+25]))
-#                 y_escape = np.array(
-#                     [y for [x, y] in escape_coords[timerange[0]:timerange[1]]])
-#                 y_escape = y_escape - y_escape[0]
-#                 turn_ax.plot(
-#                     outlier_filter(x_escape),
-#                     outlier_filter(y_escape), 'g')
-#                 turn_ax.text(
-#                     x_escape[-1],
-#                     y_escape[-1],
-#                     str(trial_counter),
-#                     size=10,
-#                     backgroundcolor='w')
-#         pl.show()
-#         print x_avg
-
-
 
 
 
@@ -2215,4 +2107,3 @@ if __name__ == '__main__':
 # navigation plot. make sure you understand exactly what the stat is.
 # current thought is "No. Visits" (in legend say filtered w 2D gaussian). 
 
-comp = ec1[0].escape_data["Barrier On Left Trajectories"] + ec1[0].escape_data["Barrier On Right Trajectories"]
