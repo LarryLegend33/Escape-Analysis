@@ -1903,6 +1903,14 @@ def collision(xb, yb, bd, x, y):
         return False
 
 
+def boxplot_across_conditions(data_lists, cmap):
+    xvals = []
+    yvals = []
+    for i, dl in enumerate(data_lists):
+        xvals.append(i*np.ones(len(dl)))
+        yvals.append(dl)
+    sb.boxplot(x=np.concatenate(xvals), y=np.concatenate(yvals), palette=cmap)
+    
 
 # SIMPLY CALL EXPERIMENT_COLLECTOR ON TWO SEPARATE DRCT_LISTS AND THEN + THEM, PUT INTO PLOT_ALL
     
@@ -1941,7 +1949,7 @@ if __name__ == '__main__':
               '102519_1', '110219_1', '110219_2']
 
     four_b_test = ['022619_2', '030519_1', '030519_2', '030719_1']
-    collision_stats, num_n_trials = infer_collisions(fishlist, False)
+  #  collision_stats, num_n_trials = infer_collisions(fishlist, False)
     
     
    # cp = hairplot_w_preferenceindex(four_b, 'd', 1)
@@ -2073,15 +2081,94 @@ if __name__ == '__main__':
 #    plot_varb_over_ecs([dv_t, lambda x: x])
 
 
-   # dv_lt = collect_varb_across_ec([four_b, red24mm_4mmdist, red12mm_4mmdist_2h, red12mm_4mmdist, red48mm_8mmdist_2h, red48mm_8mmdist], 'l', 'Barrier On Left Trajectories', [0, [], 1])
-
-  #  dv_rt = collect_varb_across_ec([four_b, red24mm_4mmdist, red12mm_4mmdist_2h, red12mm_4mmdist, red48mm_8mmdist_2h, red48mm_8mmdist], 'l', 'Barrier On Right Trajectories', [0, [], 1])
     
 # lambda x: -1*(2*x - 1) will be the mapfunction for barrier on right
 # lambda x: (2*x - 1) will be the mapfunction for barrier on left
 
  #   plot_varb_over_ecs([dv, lambda x: (2*x -1)], [dv2, lambda x: -1*(2*x - 1)])
 
+
+# MAUTHNER PLOTS
+
+# ALL LEFT TRAJECTORY DATA. MAP lambda x: -1*(2*x - 1) to get preference index. (right turns - left turns / turns)
+
+   dv_ltp = list(map(lambda x: -1*(2*x - 1), np.concatenate(collect_varb_across_ec([four_b, red24mm_4mmdist, red12mm_4mmdist_2h, red12mm_4mmdist, red48mm_8mmdist_2h, red48mm_8mmdist], 'n', 'Left Traj Percentage', [0, [], 1]))))
+
+   dv_mauthner_l_n = list(map(lambda x: -1*(2*x - 1), collect_varb_across_ec([wik_mauthner_l], 'n', 'Left Traj Percentage', [0, [], 0])[0]))
+
+   dv_mauthner_r_n = list(map(lambda x: -1*(2*x - 1), collect_varb_across_ec([wik_mauthner_r], 'n', 'Left Traj Percentage', [0, [], 0])[0]))
+
+   dv_mauthner_l_bright = list(map(lambda x: -1*(2*x - 1), collect_varb_across_ec([wik_mauthner_l], 'l', 'Correct Trajectory Percentage BRight', [0, [], 0])[0]))
+   
+   dv_mauthner_l_bleft = list(map(lambda x: 2*x - 1, collect_varb_across_ec([wik_mauthner_l], 'l', 'Correct Trajectory Percentage BLeft', [0, [], 0])[0]))
+
+   dv_mauthner_r_bright = list(map(lambda x: -1*(2*x - 1), collect_varb_across_ec([wik_mauthner_r], 'l', 'Correct Trajectory Percentage BRight', [0, [], 0])[0]))
+   
+   dv_mauthner_r_bleft = list(map(lambda x: 2*x - 1, collect_varb_across_ec([wik_mauthner_r], 'l', 'Correct Trajectory Percentage BLeft', [0, [], 0])[0]))   
+
+
+   # First show the clipped KDE plots for N trials in control and both mauthner ablated cases. 
+   # Its key to have a pairwise comparison for barriers. You want a pointplot w ste of the mean
+   # for each condition to the next in DEEP black. Then you want the individual datapoints with
+   # lines pointing from no barriers to barrier conditions in both on side of mauthner and
+   # opposite side of mauthner cases (4 total panels). you want paired ttests for each setup. THese can be in
+   # alpha dodger blue to indicate left of barrier, pink for right of barrier. so gray points
+   # to corresponding blue and pink points. And a black error barred mean change with sig changes.
+   # if these are inconclusive you can speculate as to the reason why, but this was the original
+   # data that made me say "wow!" so it should look right. 
+   
+   cp = sb.color_palette('hls', 8)
+   fig, ax = pl.subplots(1, 1)
+   sb.kdeplot(dv_ltp, color=cp[0], clip=[-1, 1], ax=ax)
+   sb.kdeplot(dv_mauthner_l_n, color=cp[1], clip=[-1, 1], ax=ax)
+   sb.kdeplot(dv_mauthner_r_n, color=cp[2], clip=[-1, 1], ax=ax)
+   sb.kdeplot(dv_mauthner_l_bright, color=cp[3], clip=[-1, 1], ax=ax)
+   sb.kdeplot(dv_mauthner_l_bleft, color=cp[4], clip=[-1, 1], ax=ax)
+   sb.kdeplot(dv_mauthner_r_bright, color=cp[5], clip=[-1, 1], ax=ax)
+   sb.kdeplot(dv_mauthner_r_bleft, color=cp[6], clip=[-1, 1], ax=ax)
+
+   boxplot_across_conditions([dv_ltp, dv_mauthner_l_n, dv_mauthner_l_bright, dv_mauthner_l_bleft,
+                              dv_mauthner_r_n, dv_mauthner_r_bright, dv_mauthner_r_bleft], cp)
+   
+
+   p_rn_rbright = ttest_ind(list(map(lambda x: -1*(2*x - 1), dv_mauthner_r_n[0])), list(map(lambda x: -1*(2*x - 1), dv_mauthner_r_bright[0])))
+
+
+   
+   ax.set_xlim([-1, 1])
+#   sb.distplot(list(map(lambda x: -1*(2*x - 1), np.concatenate(dv_ltp))), color=cp[0], kde=False)
+#   sb.distplot(list(map(lambda x: -1*(2*x - 1), dv_mauthner_l_n[0])), color=cp[1], kde=False)
+#   sb.distplot(list(map(lambda x: -1*(2*x - 1), dv_mauthner_r_n[0])), color=cp[2], kde=False)
+
+# cut it at -1, 1. 
+
+   sb.boxplot(x=np.zeros(len(np.concatenate(dv_ltp))), y = np.concatenate(dv_ltp))
+
+
+   # each lesion has a significant effect on preference index. 
+
+   p_n_to_l = ttest_ind(list(map(lambda x: -1*(2*x - 1), np.concatenate(dv_ltp))),
+                        list(map(lambda x: -1*(2*x - 1), dv_mauthner_l_n[0])))
+
+   p_n_to_r = ttest_ind(list(map(lambda x: -1*(2*x - 1), np.concatenate(dv_ltp))),
+                        list(map(lambda x: -1*(2*x - 1), dv_mauthner_r_n[0])))
+
+
+   boxplot_across_conditions(
+   
+
+   # COULD MAKE ARGUMENT THAT SOME HAVE INCOMPLETE LESIONS, SO ONES WITH INCOMPLETE LESIONS ARE INHIBITED, OTHERS
+   # STAY THE SAME. 
+   
+   
+ #   dv = collect_varb_across_ec([four_b, red24mm_4mmdist, red12mm_4mmdist_2h, red12mm_4mmdist, red48mm_8mmdist_2h, red48mm_8mmdist], 'l', 'Correct Trajectory Percentage BLeft', [0, [], 1])
+
+ #   dv2 = collect_varb_across_ec([four_b, red24mm_4mmdist, red12mm_4mmdist_2h, red12mm_4mmdist, red48mm_8mmdist_2h, red48mm_8mmdist], 'l', 'Correct Trajectory Percentage BRight', [0, [], 1])
+  
+
+  
+
+ 
 
 # TODO 9/20/2021
 
@@ -2106,4 +2193,6 @@ if __name__ == '__main__':
 
 # navigation plot. make sure you understand exactly what the stat is.
 # current thought is "No. Visits" (in legend say filtered w 2D gaussian). 
+
+
 

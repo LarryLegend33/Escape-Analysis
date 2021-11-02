@@ -498,7 +498,10 @@ blackandred_b = ["061219_2", "061219_3", "061219_4",
                  "061319_1", "061319_2", "061319_3"]
 
 navs_white = proximity_calculator(white_b, exp_type, [1, 1, 1])
-#navs_red = proximity_calculator(red_b, exp_type, [1, 0, 0], navs_white[1])
+navs_red = proximity_calculator(red_b, exp_type, [1, 0, 0], navs_white[1])
+
+
+
 #navs_big = proximity_calculator(red_2xheight_4xwide, exp_type, [1, 0, 0])  #, navs_white[1])
 
 #navs_whiteandred = proximity_calculator(whiteandred_b, exp_type, [1, 1, 1], navs_white[1])
