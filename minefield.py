@@ -1534,73 +1534,94 @@ def plot_varb_over_ecs(dv1, *dv2):
 # right plot shows the propensity to escape in the direction dictated by the
 # ablated mauthner. if the fish encounters a barrier on the side of the ablated mauthner, it escapes in the direction dictated by the ablated mauthner at the same frequency as in control conditions, indicating that an intact mauthner is required for the bias, and that the bias is excitatory (if it were inhibitory to the opposite mauthner, would see a shift). 
 
-def pairwise_l_to_n_plot(ec_left, ec_right):
-    sb.set(style="ticks", rc={"lines.linewidth": .75})
+# add ECs with l and n trials 
+    
+def pairwise_l_to_n_PI(ec_left, ec_right):
+    sb.set(style="ticks", rc={"lines.linewidth": 1})
+    cp = sb.color_palette('husl', 8)
     # quantify this using turns towards the ablated mauthner.
     # barrier on side of ablated mauthner vs opposite.
-    fig, axes = pl.subplots(1, 2, sharey=True)
-    l_leftplot = []
-    l_rightplot = []
-    n_leftplot = []
-    n_rightplot = []
+    fig, axes = pl.subplots(2, 2, sharey=True)
+    l_right_mauth_bleft = []
+    l_right_mauth_bright = []
+    l_left_mauth_bleft = []
+    l_left_mauth_bright = []
+    n_right_mauth_bright = []
+    n_right_mauth_bleft = []
+    n_left_mauth_bright = []
+    n_left_mauth_bleft = []
     for fish_ind, fish in enumerate(ec_left[0].included_fish):
         try:
             n_trial_index = ec_left[1].included_fish.index(fish)
         except ValueError:
             print("VAL ERROR")
             continue
-        cp_bright = ec_left[0].escape_data['Correct Trajectory Percentage BRight'][fish_ind]
-        cp_bleft = ec_left[0].escape_data['Correct Trajectory Percentage BLeft'][fish_ind]
-        left_percentage_control = ec_left[1].escape_data['Left Traj Percentage'][n_trial_index]
-        sb.lineplot(x=np.array([0, 1]), y=np.array([left_percentage_control, cp_bright]),
-                    ax=axes[0], markers=True, marker='.')
-        sb.lineplot(x=np.array([0, 1]), y=np.array([1-left_percentage_control, cp_bleft]),
-                    ax=axes[1], markers=True, marker='.')
+        pi_bright = -1 * (2 * ec_left[0].escape_data['Correct Trajectory Percentage BRight'][fish_ind] - 1)
+        pi_bleft = 2 * ec_left[0].escape_data['Correct Trajectory Percentage BLeft'][fish_ind] - 1
+        pi_control = -1 * (2 * ec_left[1].escape_data['Left Traj Percentage'][n_trial_index] - 1)
 
-        if math.isfinite(cp_bright):
-            n_leftplot.append(left_percentage_control)        
-            l_leftplot.append(cp_bright)
+        if math.isfinite(pi_bright):
+            n_left_mauth_bright.append(pi_control)
+            l_left_mauth_bright.append(pi_bright)
+            sb.lineplot(x=np.array([0, 1]), y=np.array([pi_control, pi_bright]),
+                        ax=axes[0, 0], markers=True, marker='.', color=cp[3], alpha=0.3)
+      
+        if math.isfinite(pi_bleft):
+            n_left_mauth_bleft.append(pi_control)
+            l_left_mauth_bleft.append(pi_bleft)
+            sb.lineplot(x=np.array([0, 1]), y=np.array([pi_control, pi_bleft]),
+                        ax=axes[0, 1], markers=True, marker='.', color=cp[3], alpha=.3)
 
-        if math.isfinite(cp_bleft):
-            n_rightplot.append(1-left_percentage_control)
-            l_rightplot.append(cp_bleft)
-            
     for fish_ind, fish in enumerate(ec_right[0].included_fish):
         try:
             n_trial_index = ec_right[1].included_fish.index(fish)
         except ValueError:
             print("VAL ERROR")
             continue
-        cp_bright = ec_right[0].escape_data['Correct Trajectory Percentage BRight'][fish_ind]
-        cp_bleft = ec_right[0].escape_data['Correct Trajectory Percentage BLeft'][fish_ind]
-        right_percentage_control = 1-ec_right[1].escape_data['Left Traj Percentage'][n_trial_index]
-        sb.lineplot(x=np.array([0, 1]), y=np.array([right_percentage_control, cp_bleft]),
-                    ax=axes[0], markers=True, marker='.')
-        sb.lineplot(x=np.array([0, 1]), y=np.array([1-right_percentage_control, cp_bright]),
-                    ax=axes[1], markers=True, marker='.')
+        pi_bright = -1 * (2 * ec_right[0].escape_data['Correct Trajectory Percentage BRight'][fish_ind] - 1)
+        pi_bleft = 2 * ec_right[0].escape_data['Correct Trajectory Percentage BLeft'][fish_ind] - 1
+        pi_control = -1 * (2 * ec_right[1].escape_data['Left Traj Percentage'][n_trial_index] - 1)
 
-        if math.isfinite(cp_bleft):
-            n_leftplot.append(right_percentage_control)        
-            l_leftplot.append(cp_bleft)
-
-        if math.isfinite(cp_bright):
-            n_rightplot.append(1-right_percentage_control)
-            l_rightplot.append(cp_bright)
+        if math.isfinite(pi_bright):
+            n_right_mauth_bright.append(pi_control)
+            l_right_mauth_bright.append(pi_bright)
+            sb.lineplot(x=np.array([0, 1]), y=np.array([pi_control, pi_bright]),
+                        ax=axes[1, 0], markers=True, marker='.', color=cp[1], alpha=.3)
+      
+        if math.isfinite(pi_bleft):
+            n_right_mauth_bleft.append(pi_control)
+            l_right_mauth_bleft.append(pi_bleft)
+            sb.lineplot(x=np.array([0, 1]), y=np.array([pi_control, pi_bleft]),
+                        ax=axes[1, 1], markers=True, marker='.', color=cp[1], alpha=.3)
+            
         
-    fig2, axes2 = pl.subplots(1, 2, sharey=True)
-    sb.pointplot(x=np.concatenate([np.zeros(len(n_leftplot)), np.ones(len(l_leftplot))]),
-                 y=np.concatenate([n_leftplot, l_leftplot]), color='k', ax=axes2[0]) # ci='sd')
-    sb.pointplot(x=np.concatenate([np.zeros(len(n_rightplot)), np.ones(len(l_rightplot))]),
-                 y=np.concatenate([n_rightplot, l_rightplot]), color='k', ax=axes2[1])
-    sb.despine()
-    axes[0].set_ylim([0, 1.2])
-    axes2[0].set_ylim([0, 1.2])
-    print(scipy.stats.ttest_rel(n_leftplot, l_leftplot))
-    print(scipy.stats.ttest_rel(n_rightplot, l_rightplot))
-    
+#    fig2, axes2 = pl.subplots(1, 2, sharey=True)
+    sb.pointplot(x=np.concatenate([np.zeros(len(n_left_mauth_bright)),
+                                   np.ones(len(l_left_mauth_bright))]),
+                 y=np.concatenate([n_left_mauth_bright,
+                                   l_left_mauth_bright]), color='k', ax=axes[0, 0], zorder=20)
+    sb.pointplot(x=np.concatenate([np.zeros(len(n_left_mauth_bleft)),
+                                   np.ones(len(l_left_mauth_bleft))]),
+                 y=np.concatenate([n_left_mauth_bleft,
+                                   l_left_mauth_bleft]), color='k', ax=axes[0, 1], zorder=20)
+    sb.pointplot(x=np.concatenate([np.zeros(len(n_right_mauth_bright)),
+                                   np.ones(len(l_right_mauth_bright))]),
+                 y=np.concatenate([n_right_mauth_bright,
+                                   l_right_mauth_bright]), color='k', ax=axes[1, 0], zorder=20)
+    sb.pointplot(x=np.concatenate([np.zeros(len(n_right_mauth_bleft)),
+                                   np.ones(len(l_right_mauth_bleft))]),
+                 y=np.concatenate([n_right_mauth_bleft,
+                                   l_right_mauth_bleft]), color='k', ax=axes[1, 1], zorder=20)
 
+    sb.despine()
+#    axes[0, 0].set_ylim([0, 1.2])
+    print(scipy.stats.ttest_rel(n_left_mauth_bright, l_left_mauth_bright))
+    print(scipy.stats.ttest_rel(n_left_mauth_bleft, l_left_mauth_bleft))
+    print(scipy.stats.ttest_rel(n_right_mauth_bright, l_right_mauth_bright))
+    print(scipy.stats.ttest_rel(n_right_mauth_bleft, l_right_mauth_bleft))
     pl.show()
 
+    
         
 def hairplot_w_preferenceindex(fish, cond, led_filter, *nocolor):
     ec = make_ec_collection(fish, cond, led_filter)
@@ -2092,69 +2113,76 @@ if __name__ == '__main__':
 
 # ALL LEFT TRAJECTORY DATA. MAP lambda x: -1*(2*x - 1) to get preference index. (right turns - left turns / turns)
 
-   dv_ltp = list(map(lambda x: -1*(2*x - 1), np.concatenate(collect_varb_across_ec([four_b, red24mm_4mmdist, red12mm_4mmdist_2h, red12mm_4mmdist, red48mm_8mmdist_2h, red48mm_8mmdist], 'n', 'Left Traj Percentage', [0, [], 1]))))
+    # dv_ltp = list(map(lambda x: -1*(2*x - 1), np.concatenate(collect_varb_across_ec([four_b, red24mm_4mmdist, red12mm_4mmdist_2h, red12mm_4mmdist, red48mm_8mmdist_2h, red48mm_8mmdist], 'n', 'Left Traj Percentage', [0, [], 1]))))
 
-   dv_mauthner_l_n = list(map(lambda x: -1*(2*x - 1), collect_varb_across_ec([wik_mauthner_l], 'n', 'Left Traj Percentage', [0, [], 0])[0]))
+    # dv_mauthner_l_n = list(map(lambda x: -1*(2*x - 1), collect_varb_across_ec([wik_mauthner_l], 'n', 'Left Traj Percentage', [0, [], 0])[0]))
 
-   dv_mauthner_r_n = list(map(lambda x: -1*(2*x - 1), collect_varb_across_ec([wik_mauthner_r], 'n', 'Left Traj Percentage', [0, [], 0])[0]))
+    # dv_mauthner_r_n = list(map(lambda x: -1*(2*x - 1), collect_varb_across_ec([wik_mauthner_r], 'n', 'Left Traj Percentage', [0, [], 0])[0]))
 
-   dv_mauthner_l_bright = list(map(lambda x: -1*(2*x - 1), collect_varb_across_ec([wik_mauthner_l], 'l', 'Correct Trajectory Percentage BRight', [0, [], 0])[0]))
-   
-   dv_mauthner_l_bleft = list(map(lambda x: 2*x - 1, collect_varb_across_ec([wik_mauthner_l], 'l', 'Correct Trajectory Percentage BLeft', [0, [], 0])[0]))
+    # dv_mauthner_l_bright = list(map(lambda x: -1*(2*x - 1), collect_varb_across_ec([wik_mauthner_l], 'l', 'Correct Trajectory Percentage BRight', [0, [], 0])[0]))
 
-   dv_mauthner_r_bright = list(map(lambda x: -1*(2*x - 1), collect_varb_across_ec([wik_mauthner_r], 'l', 'Correct Trajectory Percentage BRight', [0, [], 0])[0]))
-   
-   dv_mauthner_r_bleft = list(map(lambda x: 2*x - 1, collect_varb_across_ec([wik_mauthner_r], 'l', 'Correct Trajectory Percentage BLeft', [0, [], 0])[0]))   
+    # dv_mauthner_l_bleft = list(map(lambda x: 2*x - 1, collect_varb_across_ec([wik_mauthner_l], 'l', 'Correct Trajectory Percentage BLeft', [0, [], 0])[0]))
 
+    # dv_mauthner_r_bright = list(map(lambda x: -1*(2*x - 1), collect_varb_across_ec([wik_mauthner_r], 'l', 'Correct Trajectory Percentage BRight', [0, [], 0])[0]))
 
-   # First show the clipped KDE plots for N trials in control and both mauthner ablated cases. 
-   # Its key to have a pairwise comparison for barriers. You want a pointplot w ste of the mean
-   # for each condition to the next in DEEP black. Then you want the individual datapoints with
-   # lines pointing from no barriers to barrier conditions in both on side of mauthner and
-   # opposite side of mauthner cases (4 total panels). you want paired ttests for each setup. THese can be in
-   # alpha dodger blue to indicate left of barrier, pink for right of barrier. so gray points
-   # to corresponding blue and pink points. And a black error barred mean change with sig changes.
-   # if these are inconclusive you can speculate as to the reason why, but this was the original
-   # data that made me say "wow!" so it should look right. 
-   
-   cp = sb.color_palette('hls', 8)
-   fig, ax = pl.subplots(1, 1)
-   sb.kdeplot(dv_ltp, color=cp[0], clip=[-1, 1], ax=ax)
-   sb.kdeplot(dv_mauthner_l_n, color=cp[1], clip=[-1, 1], ax=ax)
-   sb.kdeplot(dv_mauthner_r_n, color=cp[2], clip=[-1, 1], ax=ax)
-   sb.kdeplot(dv_mauthner_l_bright, color=cp[3], clip=[-1, 1], ax=ax)
-   sb.kdeplot(dv_mauthner_l_bleft, color=cp[4], clip=[-1, 1], ax=ax)
-   sb.kdeplot(dv_mauthner_r_bright, color=cp[5], clip=[-1, 1], ax=ax)
-   sb.kdeplot(dv_mauthner_r_bleft, color=cp[6], clip=[-1, 1], ax=ax)
-
-   boxplot_across_conditions([dv_ltp, dv_mauthner_l_n, dv_mauthner_l_bright, dv_mauthner_l_bleft,
-                              dv_mauthner_r_n, dv_mauthner_r_bright, dv_mauthner_r_bleft], cp)
-   
-
-   p_rn_rbright = ttest_ind(list(map(lambda x: -1*(2*x - 1), dv_mauthner_r_n[0])), list(map(lambda x: -1*(2*x - 1), dv_mauthner_r_bright[0])))
+    # dv_mauthner_r_bleft = list(map(lambda x: 2*x - 1, collect_varb_across_ec([wik_mauthner_r], 'l', 'Correct Trajectory Percentage BLeft', [0, [], 0])[0]))   
 
 
-   
-   ax.set_xlim([-1, 1])
+    # First show the clipped KDE plots for N trials in control and both mauthner ablated cases. 
+    # Its key to have a pairwise comparison for barriers. You want a pointplot w ste of the mean
+    # for each condition to the next in DEEP black. Then you want the individual datapoints with
+    # lines pointing from no barriers to barrier conditions in both on side of mauthner and
+    # opposite side of mauthner cases (4 total panels). you want paired ttests for each setup. THese can be in
+    # alpha dodger blue to indicate left of barrier, pink for right of barrier. so gray points
+    # to corresponding blue and pink points. And a black error barred mean change with sig changes.
+    # if these are inconclusive you can speculate as to the reason why, but this was the original
+    # data that made me say "wow!" so it should look right.
+
+    # for statistics, take the absolute value of each condition's preference index data to compare across conditions with unpaired tests. for mauthner, use a test on each condition. 
+
+   # cp = sb.color_palette('hls', 8)
+   # fig, (ax, ax2) = pl.subplots(1, 2)
+   # sb.kdeplot(dv_ltp, color=cp[0], clip=[-1, 1], ax=ax)
+   # sb.kdeplot(dv_mauthner_l_n, color=cp[1], clip=[-1, 1], ax=ax)
+  #  sb.kdeplot(dv_mauthner_l_bright, color=cp[2], clip=[-1, 1], ax=ax)
+   # sb.kdeplot(dv_mauthner_l_bleft, color=cp[3], clip=[-1, 1], ax=ax)
+   # sb.kdeplot(dv_mauthner_r_n, color=cp[4], clip=[-1, 1], ax=ax)
+#    sb.kdeplot(dv_mauthner_r_bleft, color=cp[5], clip=[-1, 1], ax=ax)
+ #   sb.kdeplot(dv_mauthner_r_bright, color=cp[6], clip=[-1, 1], ax=ax)
+
+   # ax.set_xlim([-1, 1])
+
+  #  boxplot_across_conditions([dv_ltp, dv_mauthner_l_n, dv_mauthner_l_bright, dv_mauthner_l_bleft,
+   #                            dv_mauthner_r_n, dv_mauthner_r_bleft, dv_mauthner_r_bright], cp)
+
+#    pl.show()
+#    p_rn_rbright = ttest_ind(list(map(lambda x: -1*(2*x - 1), dv_mauthner_r_n[0])), list(map(lambda x: -1*(2*x - 1), dv_mauthner_r_bright[0])))
+
+  #  mauth_l_ec = experiment_collector(wik_mauthner_l, ['l', 'n'], [0, [], 0]) #, wik_mauthner_l)
+#    plot_all_results(mauth_l_ec)
+ #   mauth_r_ec = experiment_collector(wik_mauthner_r, ['l', 'n'], [0, [], 0]) # wik_mauthner_r)
+    pairwise_l_to_n_PI(mauth_l_ec, mauth_r_ec)
+ #   plot_all_results(mauth_r_ec)
+
+
+
 #   sb.distplot(list(map(lambda x: -1*(2*x - 1), np.concatenate(dv_ltp))), color=cp[0], kde=False)
 #   sb.distplot(list(map(lambda x: -1*(2*x - 1), dv_mauthner_l_n[0])), color=cp[1], kde=False)
 #   sb.distplot(list(map(lambda x: -1*(2*x - 1), dv_mauthner_r_n[0])), color=cp[2], kde=False)
 
 # cut it at -1, 1. 
 
-   sb.boxplot(x=np.zeros(len(np.concatenate(dv_ltp))), y = np.concatenate(dv_ltp))
-
 
    # each lesion has a significant effect on preference index. 
 
-   p_n_to_l = ttest_ind(list(map(lambda x: -1*(2*x - 1), np.concatenate(dv_ltp))),
-                        list(map(lambda x: -1*(2*x - 1), dv_mauthner_l_n[0])))
+  #  p_n_to_l = ttest_ind(list(map(lambda x: -1*(2*x - 1), np.concatenate(dv_ltp))),
+  #                      list(map(lambda x: -1*(2*x - 1), dv_mauthner_l_n[0])))
 
-   p_n_to_r = ttest_ind(list(map(lambda x: -1*(2*x - 1), np.concatenate(dv_ltp))),
-                        list(map(lambda x: -1*(2*x - 1), dv_mauthner_r_n[0])))
+  #  p_n_to_r = ttest_ind(list(map(lambda x: -1*(2*x - 1), np.concatenate(dv_ltp))),
+  #                      list(map(lambda x: -1*(2*x - 1), dv_mauthner_r_n[0])))
 
 
-   boxplot_across_conditions(
+#   boxplot_across_conditions(
    
 
    # COULD MAKE ARGUMENT THAT SOME HAVE INCOMPLETE LESIONS, SO ONES WITH INCOMPLETE LESIONS ARE INHIBITED, OTHERS
