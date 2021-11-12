@@ -267,20 +267,34 @@ class Condition_Collector:
             bl_correct_moves = 0
             total_right = 0
             total_left = 0
-            for r_coords in br:
+            for bri, r_coords in enumerate(br):
                 if np.sum(r_coords[0][self.trajectory_win[0]:]) < 0:
-                    br_correct_moves += 1
-                    total_left += 1
+                    if escape_obj.collision_times[br_trials[bri]] == []:
+                        br_correct_moves += 1
+                        total_left += 1
+                    else:
+                        total_right += 1
+                        
                 else:
-                    total_right += 1
-                    
-            for l_coords in bl:
+                    if escape_obj.collision_times[br_trials[bri]] == []:
+                        total_right += 1
+                    else:
+                        total_left += 1
+
+            for bli, l_coords in enumerate(bl):
                 if np.sum(l_coords[0][self.trajectory_win[0]:]) > 0:
-                    bl_correct_moves += 1
-                    total_right += 1
+                    if escape_obj.collision_times[bl_trials[bli]] == []:
+                        bl_correct_moves += 1
+                        total_right += 1
+                    else:
+                        total_left += 1
+                        
                 else:
-                    total_left += 1
-                    
+                    if escape_obj.collision_times[bl_trials[bli]] == []:
+                        total_left += 1
+                    else:
+                        total_right += 1
+
             print(len(br))
             print(len(bl))
             print(trialfilter)
@@ -526,21 +540,11 @@ class Escapes:
         for stim_file in self.stim_data:
             stimdata = np.genfromtxt(stim_file)
             light_profile = [np.sum(a[50:100]) for a in partition(100, stimdata)]
-#            light_profile = [np.sum(np.array(a) * np.arange(100)) for a in partition(100, stimdata)]
-         #   std_light_profile = gaussian_filter([np.std(lp) for lp in sliding_window(5, light_profile)], 1)
-           # std_max = argrelmax(std_light_profile)[0]
-           
             stim_init = np.argmax(light_profile[0:140])
             if not (self.timerange[0] < stim_init < self.timerange[1]):
                 stim_init = np.nan
             elif light_profile[stim_init] < 200:
                 stim_init = np.nan
-        #    stim_init = [st for st in stim_init if (
-           #     self.timerange[0] < st < self.timerange[1])]
-#            stim_init = [stdm for stdm, stdlp in zip(
- #               std_max, std_light_profile[std_max]) if stdlp > 1000]
-  #          stim_init = [st for st in stim_init if (
-   #             self.timerange[0] < st < self.timerange[1])]
             if plot_stim:
                 pl.plot(light_profile)
                 if not math.isnan(stim_init):
@@ -593,7 +597,7 @@ class Escapes:
             ycoords = self.xy_coords_by_trial[trialnum][1]
             collision_coords = 0
             # collision is read out 10ms after cstart to avoid dynamics of correct
-            # cstarts that clip the barrier. stop 30ms after cstart
+            # cstarts that clip the barrier. 
             t_offset = 0
             if not math.isnan(self.escape_latencies[trialnum]):
                 t_offset = self.escape_latencies[trialnum] + 5
@@ -1681,7 +1685,9 @@ def hairplot_heatmap(ec, ec_index):
         if bl_collision != []:
             collision_coords_bleft.append([bl_coords[0][bl_collision[0]],
                                            bl_coords[1][bl_collision[0]]])
-            ax[0].plot(bl_coords[0], bl_coords[1])
+            ax[0].plot(bl_coords[0],
+                       bl_coords[1])
+
                                           
     for br_coords, br_collision in zip(combined_data['Barrier On Right Trajectories'],
                                        combined_data['Collision Trials BRight']):
@@ -1696,7 +1702,8 @@ def hairplot_heatmap(ec, ec_index):
         if br_collision != []:
             collision_coords_bright.append([br_coords[0][br_collision[0]],
                                             br_coords[1][br_collision[0]]])
-            ax[1].plot(br_coords[0], br_coords[1])
+            ax[1].plot(br_coords[0],
+                       br_coords[1])
             
                                            
 
@@ -1847,7 +1854,7 @@ def plot_all_results(cond_collector_list):
     barax[1, 0].set_title('# Collisions')
     barax[0, 1].set_title('CStart Latency (ms)')
     barax[0, 2].set_title('CStart Angle (deg)')
-    barax[1, 1].set_title('Probability of Tap Per Arena Entry')
+    barax[1, 1].set_title('Correct Trajectory %')
    # barax[1, 2].set_title('Total Time Spent in Barrier Zone')
 #    barax[1, 2].set_title('Number of Duds')
     barax[1, 2].set_title('% Left CStarts')
@@ -1879,7 +1886,10 @@ def plot_all_results(cond_collector_list):
     cstart_rel_to_prevbout = [cdir[~np.isnan(cdir)] for
                               cdir in [c['CStart Rel to Prevbout']
                               for c in cond_data_arrays]]
-
+    ctraj_percentage_data = [cdir[~np.isnan(cdir)] for
+                             cdir in [c['Correct Trajectory Percentage']
+                                      for c in cond_data_arrays]]
+    
 
 # add swarmplot on top of barplot and make barplot transparent
 #sns.barplot(x="day", y="total_bill", data=tips, capsize=.1, ci="sd")
@@ -1890,6 +1900,12 @@ def plot_all_results(cond_collector_list):
                ax=barax[0, 0], estimator=np.nanmean, palette=cpal)
     sb.swarmplot(data=cstart_percentage_data, ax=barax[0,0], color="0", alpha=.35, size=3)
 
+    sb.barplot(data=ctraj_percentage_data, 
+               ax=barax[1, 1], estimator=np.nanmean, palette=cpal)
+    sb.swarmplot(data=ctraj_percentage_data, ax=barax[1,1], color="0", alpha=.35, size=3)
+
+
+    
     sb.barplot(data=cstart_rel_to_prevbout, ax=barax[2, 1], estimator=np.nanmean, palette=cpal)
     collision_percentage_data = [clp[~np.isnan(clp)] for
                                  clp in [c['Collision Percentage']
@@ -2037,14 +2053,30 @@ def boxplot_across_conditions(data_lists, cmap):
     sb.boxplot(x=np.concatenate(xvals), y=np.concatenate(yvals), palette=cmap)
     
 
-# SIMPLY CALL EXPERIMENT_COLLECTOR ON TWO SEPARATE DRCT_LISTS AND THEN + THEM, PUT INTO PLOT_ALL
-    
-
-# For big barriers, want to threshold on distance from the barrier at outset.
-# If not > 110, chuck. 
-
 
 if __name__ == '__main__':
+
+
+    # TODO 11/10/21:
+    # Collisions introduce a bit of a problem with trajectory correctness assignment.
+    # Seems like there are some trials with a crash followed by an escape in the opposite direction.
+    # Make sure you don't allow a "correct trajectory" call when there is a collision.
+    # interestingly though, i think collisions are messing up the white barrier data.
+    # the cstart rate is 70% away. trajectories match if you don't throw out collisions.
+    # the fish may be much closer to the barrier when the tap is initiated, meaning
+    # collisions might be called too easily. have to investigate this further for both
+    # dark trials and white barrier trials bc these are the only two trials where
+    # collisions play a significant role in the trajectories. seems like correct
+    # trajectory data is now underreported for both dark and light -- check the
+    # brleft and brright coord parsing. 
+
+    # run out with 50 as the collision_bound to include all collisions. then
+    # deal with collisions in the Condition_Collector objects now that you've collected
+    # all collision times. the collision times stored in Collition Trials BRight and BLeft
+    # are times from the 100th frame onward, so the coords from trajectory containers
+    # can be directly indexed with these numbers. 
+
+    
 
   #  dv = collect_varb_across_ec([four_b, red24mm_4mmdist, red12mm_4mmdist_2h, red12mm_4mmdist, red48mm_8mmdist_2h, red48mm_8mmdist], 'l', 'Correct CStart Percentage')
 
@@ -2063,16 +2095,6 @@ if __name__ == '__main__':
               '072419_4', '072419_5', '072419_6', '072419_7',
               '072419_8', '072419_9', '072519_1', '072619_1',
               '072619_2', '072619_3', '072619_4']
-  #  ec1 = experiment_collector(four_w, ['l', 'n'], [0, [], 1], four_w)
-#    plot_all_results(ec1)
- #   coordmat_l, coordmat_l = hairplot_heatmap(ec1, 0)
-#'072319_2', '072319_3', '072319_4'],
-
-# '23_1' looks right
-
-#    ec1 = experiment_collector(['072319_2'] ,
- #                              ['l', 'n'], [0, [], 1])
-#    coordmat_l, coordmat_l = hairplot_heatmap(ec1, 0)
     
     four_b = ['022619_2', '030519_1', '030519_2', '030719_1',
               '030719_2', '030719_3', '032619_1', '032819_1',
@@ -2081,21 +2103,15 @@ if __name__ == '__main__':
               '042719_1', '102319_1', '102319_2', '102419_1',
               '102519_1', '110219_1', '110219_2']
 
-    
-    # ec = experiment_collector(four_b, ['l', 'd'], [0, [], 1], four_b)
-    # collision_stats, num_n_trials = infer_collisions([four_b], False)
-    # plot_collision_stat(collision_stats, num_n_trials)
-    # coordmat_l, coordmat_l = hairplot_heatmap(ec1, 0)
-    # plot_all_results(ec)
-    
-    
 
-    #four_b)
-
+  
 # used to test stim and cstart detection -- perfect! 
 #    four_b_1 = ['022619_2', '030519_1']
 
- #   ec1 = experiment_collector(four_b, ['l'], [0, [], 1])
+# ec_fourb = experiment_collector(four_b, ['l', 'd', 'n'],
+    #                                [0, lambda x: (-180 < x < -30) or (30 < x < 180), 1]) #four_b)
+   # coordmat_l, coordmat_l = hairplot_heatmap(ec_fourb, 0)
+   # plot_all_results(ec_fourb)
 #    cstart_angle, cstart_latency = plot_all_results(ec1)
 
     wik_mauthner_l = ['052721_1', '060421_1',
@@ -2122,12 +2138,17 @@ if __name__ == '__main__':
                        '061521_2', '061521_3', '061521_4', '061521_5',
                        '061521_6']
 
-#    red24mm_4mmdist_ec = experiment_collector(red24mm_4mmdist, ['l','n'], [0, [], 1], red24mm_4mmdist)
+  #  red24mm_4mmdist_ec = experiment_collector(red24mm_4mmdist, ['l'], [0, lambda x: (-180 < x < -25) or (25 < x < 180), 1]) #, red24mm_4mmdist)
+  #  coordmat_l, coordmat_l = hairplot_heatmap(red24mm_4mmdist_ec, 0)
+  #  plot_all_results(red24mm_4mmdist_ec)
+    
+  #  collision_stats, num_n_trials = infer_collisions([red24mm_4mmdist_ec], False)
+  #  plot_collision_stat(collision_stats, num_n_trials)
 
 
-    red24mm_4mmdist_ec = experiment_collector(red24mm_4mmdist, ['l','n'], [0, lambda x: (-180 < x < -20) or (20 < x < 180), 1])
-    coordmat_l, coordmat_l = hairplot_heatmap(red24mm_4mmdist_ec, 0)
-    plot_all_results(red24mm_4mmdist_ec)
+  #  red24mm_4mmdist_ec = experiment_collector(red24mm_4mmdist, ['l','n'], [0, lambda x: (-180 < x < -20) or (20 < x < 180), 1])
+
+   # plot_all_results(red24mm_4mmdist_ec)
 
     red12mm_4mmdist = ["061721_1", "061721_2", "061721_3", "061721_4", "061721_5",
                        "061721_6", "061721_7", "061821_1", "061821_2", "061821_3", 
@@ -2174,8 +2195,11 @@ if __name__ == '__main__':
   #                                            [0, [], 1], red12mm_4mmdist_2h)
                                       
     fishlist = [four_b, red24mm_4mmdist, red12mm_4mmdist_2h, red12mm_4mmdist,
-                red48mm_8mmdist_2h, red48mm_8mmdist]
+                red48mm_8mmdist_2h, red48mm_8mmdist, four_w]
 
+    
+#    coordmat_l, coordmat_l = hairplot_heatmap(ec1, 0)
+ #   plot_all_results(ec)
 
     
   #  collect_collision_stat(fishlist, 'l', np.ones(len(fishlist)), [0, [], 1])
@@ -2435,7 +2459,9 @@ if __name__ == '__main__':
 # for each experiment in red barrier trials. cool.
 
 # navigation plot. make sure you understand exactly what the stat is.
-# current thought is "No. Visits" (in legend say filtered w 2D gaussian). 
+# current thought is "No. Visits" (in legend say filtered w 2D gaussian).
+
+
 
 
 
