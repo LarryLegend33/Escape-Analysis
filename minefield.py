@@ -93,7 +93,11 @@ class Condition_Collector:
                             'Total Time In Center': [],
                             'Barrier On Left Trajectories': [],
                             'Barrier On Right Trajectories': [],
-                            'CStarts Per Trial': [0, 0]}
+                            'CStarts Per Trial': [0, 0],
+                            'Stim LED Frames': [],
+                            'Number of Barrier Touches': 0,
+                            'Correct W Collision': 0,
+                            'Wrong Before Collision': 0}
         self.timerange = []
         self.filter_index = 0
         self.filter_by_led = True
@@ -227,6 +231,10 @@ class Condition_Collector:
             #             len(escape_obj.numgrayframes)))
             #     self.escape_data[
             #         'Total Time In Center'] += escape_obj.numgrayframes.tolist()
+
+            accurate_stim_times = [st for st, sta in zip(escape_obj.stim_init_times,
+                                                         escape_obj.stim_times_accurate) if sta]
+            self.escape_data['Stim LED Frames'] += accurate_stim_times
             self.escape_data['CStarts Per Trial'][0] += cstarts_executed
             self.escape_data['CStarts Per Trial'][1] += cstart_opportunities
             cstart_direction = [np.sign(cs) for cs in cstart_angles if not math.isnan(cs)]
@@ -254,6 +262,8 @@ class Condition_Collector:
             bl_correct_moves = 0
             total_right = 0
             total_left = 0
+            correct_w_collision = 0
+            wrong_before_collision = 0
             btouch_after_correct_escape_br = []
             btouch_after_correct_escape_bl = []
 
@@ -265,11 +275,20 @@ class Condition_Collector:
             # and non-collisions that occur after a soft counterturn.
 
             btouch_win = 35
+            # this is 40 ms after the 
 
-            # collision times are in frames from 100. 
+            
+
+            # collision times are in frames from 100.
+            # 
             
             for bri, r_coords in enumerate(br):
                 btouch_after_correct = False
+
+                # says trajectory went in right direction.
+                
+                # starts looking at the trajectory 20 frames after the stimulus command is delivered. 
+                
                 if np.sum(r_coords[0][self.trajectory_stat_start:]) < 0:
                     # if collision happens at frame 135 or later, likely a non-collision btouch if in the right dir.
                     # you can play with this val a bit to see if it captures your read of the white trials.
@@ -279,11 +298,24 @@ class Condition_Collector:
                             btouch_after_correct = True
                     except IndexError:
                         pass
+
+                    # if you go in the right direction and don't collide, you're correct. 
                     if escape_obj.collision_times[br_trials[bri]] == [] or btouch_after_correct:
                         br_correct_moves += 1
                         total_left += 1
                     else:
-                        total_right += 1
+
+                        # penalizing here for a collision even though you were in the right direction.
+                        # this gets rid of collision bounceoffs as correct answers.
+                        if np.sum(r_coords[0]
+                                  [self.trajectory_stat_start:
+                                   escape_obj.collision_times[br_trials[bri]][0]]) < 0:
+                            correct_w_collision += 1
+                            br_correct_moves += 1
+                            total_left += 1
+                        else:
+                            wrong_before_collision += 1
+                            total_right += 1
                 else:
                     total_right += 1
 
@@ -301,7 +333,15 @@ class Condition_Collector:
                         bl_correct_moves += 1
                         total_right += 1
                     else:
-                        total_left += 1
+                        if np.sum(l_coords[0]
+                                  [self.trajectory_stat_start:
+                                   escape_obj.collision_times[bl_trials[bli]][0]]) > 0:
+                            correct_w_collision += 1
+                            bl_correct_moves += 1
+                            total_right += 1
+                        else:
+                            wrong_before_collision += 1
+                            total_left += 1
                 else:
                     total_left += 1
 
@@ -314,7 +354,10 @@ class Condition_Collector:
 
             bright_collision_times = [escape_obj.collision_times[tr] if tr not
                                       in btouch_after_correct_escape_br else [] for tr in br_trials]
-            
+
+            self.escape_data['Number of Barrier Touches'] += len(btouch_after_correct_escape_bl) + len(btouch_after_correct_escape_br)
+            self.escape_data['Correct W Collision'] += correct_w_collision
+            self.escape_data['Wrong Before Collision'] += wrong_before_collision
             self.escape_data['Collision Trials BLeft'] += bleft_collision_times
             self.escape_data['Collision Trials BRight'] += bright_collision_times
             total_collisions = sum(map(lambda x: x != [], bleft_collision_times + bright_collision_times))
@@ -625,6 +668,8 @@ class Escapes:
             if not math.isnan(self.escape_latencies[trialnum]):
                 t_offset = self.stim_init_times[trialnum] + self.escape_latencies[trialnum] + 1
             else:
+
+            # cstarts can't be detected for mauthner b/c unpigmented. 
                 t_offset = self.stim_init_times[trialnum] + 5
             t_init = int(self.timerange[0] + t_offset)
             collision_times = []
@@ -1619,13 +1664,13 @@ def pairwise_l_to_n_PI(ec_left, ec_right):
             n_left_mauth_bright.append(pi_control)
             l_left_mauth_bright.append(pi_bright)
             sb.lineplot(x=np.array([0, 1]), y=np.array([pi_control, pi_bright]),
-                        ax=axes[0, 0], markers=True, marker='.', color=cp[3], alpha=0.3)
+                        ax=axes[0, 0], markers=True, marker='.', color=cp[3], alpha=0.1)
       
         if math.isfinite(pi_bleft):
             n_left_mauth_bleft.append(pi_control)
             l_left_mauth_bleft.append(pi_bleft)
             sb.lineplot(x=np.array([0, 1]), y=np.array([pi_control, pi_bleft]),
-                        ax=axes[0, 1], markers=True, marker='.', color=cp[3], alpha=.3)
+                        ax=axes[0, 1], markers=True, marker='.', color=cp[3], alpha=.1)
 
     for fish_ind, fish in enumerate(ec_right[0].included_fish):
         try:
@@ -1641,13 +1686,13 @@ def pairwise_l_to_n_PI(ec_left, ec_right):
             n_right_mauth_bright.append(pi_control)
             l_right_mauth_bright.append(pi_bright)
             sb.lineplot(x=np.array([0, 1]), y=np.array([pi_control, pi_bright]),
-                        ax=axes[1, 0], markers=True, marker='.', color=cp[1], alpha=.3)
+                        ax=axes[1, 0], markers=True, marker='.', color=cp[1], alpha=.1)
       
         if math.isfinite(pi_bleft):
             n_right_mauth_bleft.append(pi_control)
             l_right_mauth_bleft.append(pi_bleft)
             sb.lineplot(x=np.array([0, 1]), y=np.array([pi_control, pi_bleft]),
-                        ax=axes[1, 1], markers=True, marker='.', color=cp[1], alpha=.3)
+                        ax=axes[1, 1], markers=True, marker='.', color=cp[1], alpha=.1)
 
 
 
@@ -1696,7 +1741,7 @@ def pairwise_l_to_n_PI(ec_left, ec_right):
         else:
             curr_color = cp[1]
         sb.lineplot(x=np.array([0, 1]), y=np.array([pi_control, pi_barr]),
-                    ax=axes2[0], markers=True, marker='.', color=curr_color, alpha=0.3)
+                    ax=axes2[0], markers=True, marker='.', color=curr_color, alpha=0.1)
 
     for i, (pi_barr, pi_control) in enumerate(zip(l_barrier_on_nonablated_side, n_barrier_on_nonablated_side)):
         if i < len(l_right_mauth_bleft):
@@ -1704,7 +1749,7 @@ def pairwise_l_to_n_PI(ec_left, ec_right):
         else:
             curr_color = cp[1]
         sb.lineplot(x=np.array([0, 1]), y=np.array([pi_control, pi_barr]),
-                    ax=axes2[1], markers=True, marker='.', color=curr_color, alpha=0.3)
+                    ax=axes2[1], markers=True, marker='.', color=curr_color, alpha=0.1)
         
     sb.pointplot(x=np.concatenate([np.zeros(len(n_barrier_on_ablated_side)),
                                    np.ones(len(l_barrier_on_ablated_side))]),
@@ -2130,17 +2175,32 @@ def boxplot_across_conditions(data_lists, cmap):
         yvals.append(dl)
     sb.boxplot(x=np.concatenate(xvals), y=np.concatenate(yvals), palette=cmap)
     
-
-
-if __name__ == '__main__':
-
-
+    
+def correct_traj_by_visual_window(fishlist, div, mapfunc, condition):
+    correct_traj_percentage = []
+    for win in range(0, 180, div):
+        ec = experiment_collector(fishlist, [condition],
+                                  [0, lambda x: (-win-div < x < -win) or (win < x < win + div), 1])
+        correct_traj_percentage.append(ec[0].escape_data['Correct Trajectory Percentage'])
+    xvals = []
+    for i, d in enumerate(correct_traj_percentage):
+        xvals.append(i*np.ones(len(d)))
+    xv_concat = np.concatenate(xvals)
+    yvals = list(map(mapfunc, np.concatenate(correct_traj_percentage)))
+   # sb.pointplot(x=xv_concat, y=yvals, color='gray', markers='s')
+#    sb.stripplot(x=xv_concat, y=yvals, dodge=False, alpha=.2, zorder=0, jitter=.005, color='dodgerblue')
+    sb.lineplot(x=xv_concat, y=yvals, color='gray', markers='s')
+    sb.despine()
+    pl.show()
 
 
 
 
     
-    viswin = 25
+
+if __name__ == '__main__':
+
+    viswin = 20
     visfunc = lambda x: (-180 + viswin < x < -viswin) or (viswin < x < 180-viswin)
 
     # TODO 11/10/21:
@@ -2190,24 +2250,22 @@ if __name__ == '__main__':
               '102519_1', '110219_1', '110219_2']
 
 
- #   ec_fourw = experiment_collector(four_w, ['l', 'n'],
- #                                   [0, visfunc, 1])
-  #  coordmat_l, coordmat_l = hairplot_heatmap(ec_fourw, 0)
-                                        
- #   coordmat_l, coordmat_l = hairplot_heatmap(ec_fourw, 0)
-  #  hairplot_w_preferenceindex(four_w, 'l', 1, 30)
-  #  hairplot_w_preferenceindex(four_b, 'd', 1, 20)
-    
-  #  plot_all_results(ec_fourw)
+    ec_fourw = experiment_collector(four_w, ['l', 'n'],
+                                    [0, visfunc, 1])
+    coordmat_l, coordmat_l = hairplot_heatmap(ec_fourw, 0)
+    hairplot_w_preferenceindex(four_w, 'l', 1, 30)
+    hairplot_w_preferenceindex(four_b, 'd', 1, 20)
+    plot_all_results(ec_fourw)
 
 # used to test stim and cstart detection -- perfect! 
 #    four_b_1 = ['022619_2', '030519_1']
 
-  #  ec_fourb = experiment_collector(four_b, ['l', 'd', 'n'],
-  #                                  [0, visfunc, 1]) 
- #   coordmat_l, coordmat_l = hairplot_heatmap(ec_fourb, 1)
-  #  plot_all_results(ec_fourb)
-#    cstart_angle, cstart_latency = plot_all_results(ec1)
+    ec_fourb = experiment_collector(four_b, ['l', 'd', 'n'],
+                                    [0, visfunc, 1])
+    coordmat_l, coordmat_l = hairplot_heatmap(ec_fourb, 1)
+    plot_all_results(ec_fourb)
+    
+# #    cstart_angle, cstart_latency = plot_all_results(ec1)
 
     wik_mauthner_l = ['052721_1', '060421_1',
                       '060421_3', '060421_4', '060421_5',
@@ -2219,13 +2277,6 @@ if __name__ == '__main__':
                       '052821_4', '060321_1', '060321_2',
                       '060321_4', '060321_5', '060321_6', '060321_7',
                       '060421_8', '061021_4', '061021_5']
-
-   # mauth_l_ec = experiment_collector(wik_mauthner_l, ['l', 'n'], [0, [], 0], #wik_mauthner_l)
-#    plot_all_results(mauth_l_ec)
-   # mauth_r_ec = experiment_collector(wik_mauthner_r, ['l', 'n'], [0, [], 0], #wik_mauthner_r)
-  #  pairwise_l_to_n_plot(mauth_l_ec, mauth_r_ec)
- #   plot_all_results(mauth_r_ec)
-
     
     red24mm_4mmdist = ['061121_1', '061121_2', '061121_3', '061121_4',
                        '061121_5', '061121_6', '061121_7', '061421_1',
@@ -2233,27 +2284,22 @@ if __name__ == '__main__':
                        '061521_2', '061521_3', '061521_4', '061521_5',
                        '061521_6']
 
-  #  red24mm_4mmdist_ec = experiment_collector(red24mm_4mmdist, ['l'], [0, lambda x: (-180 < x < -25) or (25 < x < 180), 1]) #, red24mm_4mmdist)
-  #  coordmat_l, coordmat_l = hairplot_heatmap(red24mm_4mmdist_ec, 0)
-  #  plot_all_results(red24mm_4mmdist_ec)
-    
-  #  collision_stats, num_n_trials = infer_collisions([red24mm_4mmdist_ec], False)
-  #  plot_collision_stat(collision_stats, num_n_trials)
+#   #  collision_stats, num_n_trials = infer_collisions([red24mm_4mmdist_ec], False)
+#   #  plot_collision_stat(collision_stats, num_n_trials)
 
 
-  #  red24mm_4mmdist_ec = experiment_collector(red24mm_4mmdist, ['l', 'n'],
-   #                                           [0, visfunc, 1])
-
-   # plot_all_results(red24mm_4mmdist_ec)
+    red24mm_4mmdist_ec = experiment_collector(red24mm_4mmdist, ['l', 'n'],
+                                              [0, visfunc, 1])
+    plot_all_results(red24mm_4mmdist_ec)
 
     red12mm_4mmdist = ["061721_1", "061721_2", "061721_3", "061721_4", "061721_5",
                        "061721_6", "061721_7", "061821_1", "061821_2", "061821_3", 
                        "061821_4", "061821_5", "061821_6",  "062221_1", "062221_2",
                        "062221_3", "062221_4", "062221_5", "062221_6"]
 
-   # red12mm_4mmdist_ec = experiment_collector(red12mm_4mmdist,
-    #                                          ['l', 'n'], [0, visfunc, 1])
- #   plot_all_results(red12mm_4mmdist_ec)
+    red12mm_4mmdist_ec = experiment_collector(red12mm_4mmdist,
+                                              ['l', 'n'], [0, visfunc, 1])
+    plot_all_results(red12mm_4mmdist_ec)
 
     red48mm_8mmdist = ["062521_3", "062521_4", "063021_2",
                        "063021_3", "063021_4", "063021_5",
@@ -2262,7 +2308,7 @@ if __name__ == '__main__':
                        "070721_4", "070721_5", "070721_6", "070921_2",
                        "070921_4"]
 
-   # plot_all_results(red48mm_8mmdist_ec)
+
 
     red48mm_8mmdist_2h = [#"070821_1", "070821_2", "070821_8", "070821_9",
         #                  "070921_6",
@@ -2274,7 +2320,7 @@ if __name__ == '__main__':
                           "071321_3", "071421_1", "071421_2",
                           "071421_3", "071421_4", "071421_5", "071421_7"]
 
-  #   plot_all_results(red48mm_8mmdist_2h_ec)
+
 
     red12mm_4mmdist_2h = ["072921_1", "072921_2", "072921_4", "073021_1",
                           "073021_2", "073021_3", "073021_4", "073021_5",
@@ -2282,97 +2328,88 @@ if __name__ == '__main__':
                           "080221_3", "080221_4", "080221_5", "080221_6",
                           "080221_7", "080321_1", "080321_2", "080321_3"]
 
-    # red12mm_4mmdist_ec_2h = experiment_collector(red12mm_4mmdist_2h,
-    #                                           ['l', 'n'], [0, visfunc, 1])
-    # plot_all_results(red12mm_4mmdist_ec_2h)
+    red12mm_4mmdist_ec_2h = experiment_collector(red12mm_4mmdist_2h,
+                                                 ['l', 'n'], [0, visfunc, 1])
+    plot_all_results(red12mm_4mmdist_ec_2h)
 
-    # red48mm_8mmdist_ec_2h = experiment_collector(red48mm_8mmdist_2h,
-    #                                           ['l', 'n'], [0, visfunc, 1])
-    # plot_all_results(red48mm_8mmdist_ec_2h)
+    red48mm_8mmdist_ec_2h = experiment_collector(red48mm_8mmdist_2h,
+                                                 ['l', 'n'], [0, visfunc, 1])
+    plot_all_results(red48mm_8mmdist_ec_2h)
 
-    # red48mm_8mmdist_ec = experiment_collector(red48mm_8mmdist,
-    #                                           ['l', 'n'], [0, visfunc, 1])
-    # plot_all_results(red48mm_8mmdist_ec)
+    red48mm_8mmdist_ec = experiment_collector(red48mm_8mmdist,
+                                              ['l', 'n'], [0, visfunc, 1])
+    plot_all_results(red48mm_8mmdist_ec)
 
     mauth_l_ec = experiment_collector(wik_mauthner_l, ['l', 'n'],
-                                       [0, visfunc, 0])
+                                      [0, visfunc, 0])
     mauth_r_ec = experiment_collector(wik_mauthner_r, ['l', 'n'],
-                                       [0, visfunc, 0])
+                                      [0, visfunc, 0])
     pairwise_l_to_n_PI(mauth_l_ec, mauth_r_ec)
+ 
+#     fishlist = [four_b, red24mm_4mmdist, red12mm_4mmdist_2h, red12mm_4mmdist,
+#                 red48mm_8mmdist_2h, red48mm_8mmdist, four_w]
 
-
-  #  red48mm_8mmdist_ec = experiment_collector(red48mm_8mmdist, ['l', 'n'],
-  #                                            [0, [], 1], red48mm_8mmdist)
-                                      
-  #  red48mm_8mmdist_2h_ec = experiment_collector(red48mm_8mmdist_2h, ['l', 'n'],
-  #                                               [0, [], 1], red48mm_8mmdist_2h)
-                                      
-  #  red12mm_4mmdist_2h_ec = experiment_collector(red12mm_4mmdist_2h, ['l', 'n'],
-  #                                            [0, [], 1], red12mm_4mmdist_2h)
-                                      
-    fishlist = [four_b, red24mm_4mmdist, red12mm_4mmdist_2h, red12mm_4mmdist,
-                red48mm_8mmdist_2h, red48mm_8mmdist, four_w]
-
-#    ecs_bar = [experiment_collector(fish, ['l', 'd', 'n'], [0, lambda x: True, 1], fish) for fish in fishlist]
- #   ecs_virtual = [experiment_collector(fish, ['v', 'i', 'n'], [0, lambda x: True, 1], fish) for fish in [virtual]]
-  #  ecs_mauth = [experiment_collector(fish, ['l', 'n'], [0, lambda x: True, 0], fish) for fish in [wik_mauthner_l, wik_mauthner_r]]
+#     # ecs_bar = [experiment_collector(fish, ['l', 'd', 'n'], [0, lambda x: True, 1], fish) for fish in fishlist]
+#     # ecs_virtual = [experiment_collector(fish, ['v', 'i', 'n'], [0, lambda x: True, 1], fish) for fish in [virtual]]
+#     # ecs_mauth = [experiment_collector(fish, ['l', 'n'], [0, lambda x: True, 0], fish) for fish in [wik_mauthner_l, wik_mauthner_r]]
 
 
     
-#    coordmat_l, coordmat_l = hairplot_heatmap(ec1, 0)
- #   plot_all_results(ec)
+# #    coordmat_l, coordmat_l = hairplot_heatmap(ec1, 0)
+#  #   plot_all_results(ec)
 
     
-  #  collect_collision_stat(fishlist, 'l', np.ones(len(fishlist)), [0, [], 1])
+#     collect_collision_stat(fishlist, 'l', np.ones(len(fishlist)), [0, visfunc, 1])
 
 
-  #  hairplot_w_preferenceindex(red12mm_4mmdist, 'l', 1)
+#   #  hairplot_w_preferenceindex(red12mm_4mmdist, 'l', 1)
 
 
-    # Need a pairwise statistic for the mauthners. How biased before the trial? If all of the mistake escapes come
-    # from fish that are completely biased b/c of the mauthner ablation, and none of them come from fish who were
-    # 50 / 50, then there's a simpler explanation. Can do this by using included and rejected fish in each
-    # condition collector. write a function that takes condcollectors from the l and n condition, then
-    # does pairwise statistics: percent left vs percent right for the N trials, then percent correct for each different mauthner on the side that would activate the ablated mauthner. 
+#     # Need a pairwise statistic for the mauthners. How biased before the trial? If all of the mistake escapes come
+#     # from fish that are completely biased b/c of the mauthner ablation, and none of them come from fish who were
+#     # 50 / 50, then there's a simpler explanation. Can do this by using included and rejected fish in each
+#     # condition collector. write a function that takes condcollectors from the l and n condition, then
+#     # does pairwise statistics: percent left vs percent right for the N trials, then percent correct for each different mauthner on the side that would activate the ablated mauthner. 
     
 
-   # red12mm_4mmdist_2h_ec = experiment_collector(red12mm_4mmdist_2h, ['l', 'n'], [0, [], 1], red12mm_4mmdist_2h)
+#    # red12mm_4mmdist_2h_ec = experiment_collector(red12mm_4mmdist_2h, ['l', 'n'], [0, [], 1], red12mm_4mmdist_2h)
 
-  #  ec_d = experiment_collector(four_b, ['d'], [0, [], 1])
-  #  ec_l = experiment_collector(four_b, ['l'], [0, [], 1])
-#    coordmat_l, coordmat_l = hairplot_heatmap(ec_d)
+#   #  ec_d = experiment_collector(four_b, ['d'], [0, [], 1])
+#   #  ec_l = experiment_collector(four_b, ['l'], [0, [], 1])
+# #    coordmat_l, coordmat_l = hairplot_heatmap(ec_d)
    
 
    
     """ PLOTS FOR PAPER """
 
-    # white_and_virtual_list = [four_w, virtual, virtual]
+    white_and_virtual_list = [four_w, virtual, virtual]
     
-    # white_and_virtual_bleft = collect_varb_across_ec(white_and_virtual_list, ['l', 'v', 'i'],
-    #                                                 "Correct Trajectory Percentage BLeft", [0, visfunc, 1])
-    # white_and_virtual_bright = collect_varb_across_ec(white_and_virtual_list, ['l', 'v', 'i'],
-    #                                                  "Correct Trajectory Percentage BRight", [0, visfunc, 1])
-    # white_and_virtual_correct = collect_varb_across_ec(white_and_virtual_list, ['l', 'v', 'i'],
-    #                                                 "Correct Trajectory Percentage", [0, visfunc, 1])
+    white_and_virtual_bleft = collect_varb_across_ec(white_and_virtual_list, ['l', 'v', 'i'],
+                                                    "Correct Trajectory Percentage BLeft", [0, visfunc, 1])
+    white_and_virtual_bright = collect_varb_across_ec(white_and_virtual_list, ['l', 'v', 'i'],
+                                                     "Correct Trajectory Percentage BRight", [0, visfunc, 1])
+    white_and_virtual_correct = collect_varb_across_ec(white_and_virtual_list, ['l', 'v', 'i'],
+                                                    "Correct Trajectory Percentage", [0, visfunc, 1])
 
-    # plot_varb_over_ecs([white_and_virtual_bleft, lambda x: (2*x -1)],
-    #                    [white_and_virtual_bright, lambda x: -1*(2*x - 1)])
+    plot_varb_over_ecs([white_and_virtual_bleft, lambda x: (2*x -1)],
+                       [white_and_virtual_bright, lambda x: -1*(2*x - 1)])
 
-    # plot_varb_over_ecs([white_and_virtual_correct, lambda x: 2*x -1])
+    plot_varb_over_ecs([white_and_virtual_correct, lambda x: 2*x -1])
 
-    # red_bleft = collect_varb_across_ec([four_b, red24mm_4mmdist, red12mm_4mmdist_2h, red12mm_4mmdist, red48mm_8mmdist_2h, red48mm_8mmdist], 'l', 'Correct Trajectory Percentage BLeft', [0, visfunc, 1])
+    red_bleft = collect_varb_across_ec([four_b, red24mm_4mmdist, red12mm_4mmdist_2h, red12mm_4mmdist, red48mm_8mmdist_2h, red48mm_8mmdist], 'l', 'Correct Trajectory Percentage BLeft', [0, visfunc, 1])
 
-    # red_bright = collect_varb_across_ec([four_b, red24mm_4mmdist, red12mm_4mmdist_2h, red12mm_4mmdist, red48mm_8mmdist_2h, red48mm_8mmdist], 'l', 'Correct Trajectory Percentage BRight', [0, visfunc, 1])
+    red_bright = collect_varb_across_ec([four_b, red24mm_4mmdist, red12mm_4mmdist_2h, red12mm_4mmdist, red48mm_8mmdist_2h, red48mm_8mmdist], 'l', 'Correct Trajectory Percentage BRight', [0, visfunc, 1])
 
-    # red_correct = collect_varb_across_ec([four_b, red24mm_4mmdist, red12mm_4mmdist_2h, red12mm_4mmdist, red48mm_8mmdist_2h, red48mm_8mmdist], 'l', 'Correct Trajectory Percentage', [0, visfunc, 1])
-
-
-    # plot_varb_over_ecs([red_bleft, lambda x: (2*x -1)],
-    #                    [red_bright, lambda x: -1*(2*x - 1)])
-
-    # plot_varb_over_ecs([red_correct, lambda x: 2*x -1])
+    red_correct = collect_varb_across_ec([four_b, red24mm_4mmdist, red12mm_4mmdist_2h, red12mm_4mmdist, red48mm_8mmdist_2h, red48mm_8mmdist], 'l', 'Correct Trajectory Percentage', [0, visfunc, 1])
 
 
+    plot_varb_over_ecs([red_bleft, lambda x: (2*x -1)],
+                       [red_bright, lambda x: -1*(2*x - 1)])
+
+    plot_varb_over_ecs([red_correct, lambda x: 2*x -1])
+
+
+#     red_bleft = collect_varb_across_ec([four_b, red24mm_4mmdist, red12mm_4mmdist_2h, red12mm_4mmdist, red48mm_8mmdist_2h, red48mm_8mmdist], 'l', 'Stim LED Frames', [0, visfunc, 1])
 
 
 
@@ -2380,55 +2417,55 @@ if __name__ == '__main__':
 
 
     
-  #  # plot_all_results(red12mm_4mmdist_2h_ec)
+#   #  # plot_all_results(red12mm_4mmdist_2h_ec)
 
-  #   correct_bleft = collect_varb_across_ec([four_b, red24mm_4mmdist, red12mm_4mmdist_2h, red12mm_4mmdist, red48mm_8mmdist_2h, red48mm_8mmdist], 'l', 'Correct Trajectory Percentage BLeft', [0, [], 1])
+#   #   correct_bleft = collect_varb_across_ec([four_b, red24mm_4mmdist, red12mm_4mmdist_2h, red12mm_4mmdist, red48mm_8mmdist_2h, red48mm_8mmdist], 'l', 'Correct Trajectory Percentage BLeft', [0, [], 1])
 
-  #   correct_bright = collect_varb_across_ec([four_b, red24mm_4mmdist, red12mm_4mmdist_2h, red12mm_4mmdist, red48mm_8mmdist_2h, red48mm_8mmdist], 'l', 'Correct Trajectory Percentage BRight', [0, [], 1])
+#   #   correct_bright = collect_varb_across_ec([four_b, red24mm_4mmdist, red12mm_4mmdist_2h, red12mm_4mmdist, red48mm_8mmdist_2h, red48mm_8mmdist], 'l', 'Correct Trajectory Percentage BRight', [0, [], 1])
 
-  #   correct_overall_comparison = collect_varb_across_ec([four_b, red24mm_4mmdist, red12mm_4mmdist_2h, red12mm_4mmdist, red48mm_8mmdist_2h, red48mm_8mmdist], 'l', 'Correct Trajectory Percentage', [0, [], 1])
+#   #   correct_overall_comparison = collect_varb_across_ec([four_b, red24mm_4mmdist, red12mm_4mmdist_2h, red12mm_4mmdist, red48mm_8mmdist_2h, red48mm_8mmdist], 'l', 'Correct Trajectory Percentage', [0, [], 1])
 
-  #   correct_overall_PI = [list(map(lambda x: 2*x - 1, x)) for x in correct_overall_comparison]
+#   #   correct_overall_PI = [list(map(lambda x: 2*x - 1, x)) for x in correct_overall_comparison]
 
-  #   plot_varb_over_ecs([correct_bleft, lambda x: (2*x -1)],
-  #                      [correct_bright, lambda x: -1*(2*x - 1)])
+#   #   plot_varb_over_ecs([correct_bleft, lambda x: (2*x -1)],
+#   #                      [correct_bright, lambda x: -1*(2*x - 1)])
 
-  #   plot_varb_over_ecs([correct_overall_PI, lambda x: x])
+#   #   plot_varb_over_ecs([correct_overall_PI, lambda x: x])
     
-  #   hairplot_w_preferenceindex(wik_mauthner_l, 'n', 0, "black")
-  #   hairplot_w_preferenceindex(wik_mauthner_l, 'l', 0)
+#   #   hairplot_w_preferenceindex(wik_mauthner_l, 'n', 0, "black")
+#   #   hairplot_w_preferenceindex(wik_mauthner_l, 'l', 0)
 
-  #   hairplot_w_preferenceindex(wik_mauthner_r, 'n', 0, "black")
-  #   hairplot_w_preferenceindex(wik_mauthner_r, 'l', 0)
+#   #   hairplot_w_preferenceindex(wik_mauthner_r, 'n', 0, "black")
+#   #   hairplot_w_preferenceindex(wik_mauthner_r, 'l', 0)
     
 
-  #   dv_ltp = collect_varb_across_ec([four_b, red24mm_4mmdist, red12mm_4mmdist_2h, red12mm_4mmdist, red48mm_8mmdist_2h, red48mm_8mmdist, virtual, four_w], 'n', 'Left Traj Percentage', [0, [], 1])
-  #   dv_mauthner_l = collect_varb_across_ec([wik_mauthner_l], 'n', 'Left Traj Percentage', [0, [], 0])
-  #   dv_mauthner_r = collect_varb_across_ec([wik_mauthner_r], 'n', 'Left Traj Percentage', [0, [], 0])
+#   #   dv_ltp = collect_varb_across_ec([four_b, red24mm_4mmdist, red12mm_4mmdist_2h, red12mm_4mmdist, red48mm_8mmdist_2h, red48mm_8mmdist, virtual, four_w], 'n', 'Left Traj Percentage', [0, [], 1])
+#   #   dv_mauthner_l = collect_varb_across_ec([wik_mauthner_l], 'n', 'Left Traj Percentage', [0, [], 0])
+#   #   dv_mauthner_r = collect_varb_across_ec([wik_mauthner_r], 'n', 'Left Traj Percentage', [0, [], 0])
 
-  #   ltp_PI = list(map(lambda x: -1*(2*x - 1), np.concatenate(dv_ltp)))
-  #   mauthner_l_PI = list(map(lambda x: -1*(2*x - 1), dv_mauthner_l[0]))
-  #   mauthner_r_PI = list(map(lambda x: -1*(2*x - 1), dv_mauthner_r[0]))
-  #   cpal = sb.color_palette('husl', 8)
-  #   cpal2 = sb.color_palette('hls', 8)
-  #   fig, ax = pl.subplots(1, 1)
-  #   sb.set(style="ticks", rc={"lines.linewidth": 1})
-  #   sb.kdeplot(ltp_PI,
-  #              color=cpal2[0], clip=[-1, 1], ax=ax)
-  #   sb.kdeplot(mauthner_l_PI,
-  #              clip=[-1, 1], ax=ax, color=cpal[3])
-  #   sb.kdeplot(mauthner_r_PI, 
-  #              clip=[-1, 1], ax=ax, color=cpal[1])
-  #   ax.set_xlim([-1, 1])
-  #   p_n_to_l = ttest_ind(ltp_PI, mauthner_l_PI)
-  #   p_n_to_r = ttest_ind(ltp_PI, mauthner_r_PI)
-  #   PI_means = list(map(np.mean, [ltp_PI, mauthner_l_PI, mauthner_r_PI]))
-  #   PI_stds = list(map(np.std, [ltp_PI, mauthner_l_PI, mauthner_r_PI]))
+#   #   ltp_PI = list(map(lambda x: -1*(2*x - 1), np.concatenate(dv_ltp)))
+#   #   mauthner_l_PI = list(map(lambda x: -1*(2*x - 1), dv_mauthner_l[0]))
+#   #   mauthner_r_PI = list(map(lambda x: -1*(2*x - 1), dv_mauthner_r[0]))
+#   #   cpal = sb.color_palette('husl', 8)
+#   #   cpal2 = sb.color_palette('hls', 8)
+#   #   fig, ax = pl.subplots(1, 1)
+#   #   sb.set(style="ticks", rc={"lines.linewidth": 1})
+#   #   sb.kdeplot(ltp_PI,
+#   #              color=cpal2[0], clip=[-1, 1], ax=ax)
+#   #   sb.kdeplot(mauthner_l_PI,
+#   #              clip=[-1, 1], ax=ax, color=cpal[3])
+#   #   sb.kdeplot(mauthner_r_PI, 
+#   #              clip=[-1, 1], ax=ax, color=cpal[1])
+#   #   ax.set_xlim([-1, 1])
+#   #   p_n_to_l = ttest_ind(ltp_PI, mauthner_l_PI)
+#   #   p_n_to_r = ttest_ind(ltp_PI, mauthner_r_PI)
+#   #   PI_means = list(map(np.mean, [ltp_PI, mauthner_l_PI, mauthner_r_PI]))
+#   #   PI_stds = list(map(np.std, [ltp_PI, mauthner_l_PI, mauthner_r_PI]))
     
  
- #    collect_collision_stat([four_b], 'l', np.ones(len([four_b])), [0, [], 1])
+#  #    collect_collision_stat([four_b], 'l', np.ones(len([four_b])), [0, [], 1])
 
-""" END PLOTS FOR PAPER """ 
+# """ END PLOTS FOR PAPER """ 
 
 
 
@@ -2440,119 +2477,119 @@ if __name__ == '__main__':
 
 
   
-    # need a ttest for 24mm barrier at 4mm and tall 48mm barrier at 8mm. 
+#     # need a ttest for 24mm barrier at 4mm and tall 48mm barrier at 8mm. 
 
     
 
     
-  #  dv_c = collect_varb_across_ec([four_b, red24mm_4mmdist, red12mm_4mmdist_2h, red12mm_4mmdist, red48mm_8mmdist_2h, red48mm_8mmdist], 'l', 'Correct CStart Percentage', [0, [], 1])
+#   #  dv_c = collect_varb_across_ec([four_b, red24mm_4mmdist, red12mm_4mmdist_2h, red12mm_4mmdist, red48mm_8mmdist_2h, red48mm_8mmdist], 'l', 'Correct CStart Percentage', [0, [], 1])
 
 
-  #  dv_ltp = collect_varb_across_ec([four_b, red24mm_4mmdist, red12mm_4mmdist_2h, red12mm_4mmdist, red48mm_8mmdist_2h, red48mm_8mmdist], 'n', 'Left Traj Percentage', [0, [], 1])
+#   #  dv_ltp = collect_varb_across_ec([four_b, red24mm_4mmdist, red12mm_4mmdist_2h, red12mm_4mmdist, red48mm_8mmdist_2h, red48mm_8mmdist], 'n', 'Left Traj Percentage', [0, [], 1])
 
 
-  #  dv_mauthner_l = collect_varb_across_ec([wik_mauthner_l], 'n', 'Left Traj Percentage', [0, [], 0])
+#   #  dv_mauthner_l = collect_varb_across_ec([wik_mauthner_l], 'n', 'Left Traj Percentage', [0, [], 0])
 
-  #  dv_mauthner_r = collect_varb_across_ec([wik_mauthner_r], 'n', 'Left Traj Percentage', [0, [], 0])
-
-    
-    # dv_c1 = collect_varb_across_ec([four_b, red24mm_4mmdist, red12mm_4mmdist_2h, red12mm_4mmdist, red48mm_8mmdist_2h, red48mm_8mmdist], 'l', 'Correct CStart Percentage', [0, [0, 180], 1])
-
-    # dv_c2 = collect_varb_across_ec([four_b, red24mm_4mmdist, red12mm_4mmdist_2h, red12mm_4mmdist, red48mm_8mmdist_2h, red48mm_8mmdist], 'l', 'Correct CStart Percentage', [0, [-180, 0], 1])
+#   #  dv_mauthner_r = collect_varb_across_ec([wik_mauthner_r], 'n', 'Left Traj Percentage', [0, [], 0])
 
     
- #   dv_t = collect_varb_across_ec([four_b, red24mm_4mmdist, red12mm_4mmdist_2h, red12mm_4mmdist, red48mm_8mmdist_2h, red48mm_8mmdist], 'l', 'Correct Trajectory Percentage', [0, [], 1])
+#     # dv_c1 = collect_varb_across_ec([four_b, red24mm_4mmdist, red12mm_4mmdist_2h, red12mm_4mmdist, red48mm_8mmdist_2h, red48mm_8mmdist], 'l', 'Correct CStart Percentage', [0, [0, 180], 1])
+
+#     # dv_c2 = collect_varb_across_ec([four_b, red24mm_4mmdist, red12mm_4mmdist_2h, red12mm_4mmdist, red48mm_8mmdist_2h, red48mm_8mmdist], 'l', 'Correct CStart Percentage', [0, [-180, 0], 1])
+
+    
+#  #   dv_t = collect_varb_across_ec([four_b, red24mm_4mmdist, red12mm_4mmdist_2h, red12mm_4mmdist, red48mm_8mmdist_2h, red48mm_8mmdist], 'l', 'Correct Trajectory Percentage', [0, [], 1])
 
 
-#    plot_varb_over_ecs([dv_c, lambda x: x])
-#    plot_varb_over_ecs([dv_t, lambda x: x])
+# #    plot_varb_over_ecs([dv_c, lambda x: x])
+# #    plot_varb_over_ecs([dv_t, lambda x: x])
 
 
     
-# lambda x: -1*(2*x - 1) will be the mapfunction for barrier on right
-# lambda x: (2*x - 1) will be the mapfunction for barrier on left
+# # lambda x: -1*(2*x - 1) will be the mapfunction for barrier on right
+# # lambda x: (2*x - 1) will be the mapfunction for barrier on left
 
- #   plot_varb_over_ecs([dv, lambda x: (2*x -1)], [dv2, lambda x: -1*(2*x - 1)])
-
-
-# MAUTHNER PLOTS
-
-# ALL LEFT TRAJECTORY DATA. MAP lambda x: -1*(2*x - 1) to get preference index. (right turns - left turns / turns)
-
-    # dv_ltp = list(map(lambda x: -1*(2*x - 1), np.concatenate(collect_varb_across_ec([four_b, red24mm_4mmdist, red12mm_4mmdist_2h, red12mm_4mmdist, red48mm_8mmdist_2h, red48mm_8mmdist], 'n', 'Left Traj Percentage', [0, [], 1]))))
-
-    # dv_mauthner_l_n = list(map(lambda x: -1*(2*x - 1), collect_varb_across_ec([wik_mauthner_l], 'n', 'Left Traj Percentage', [0, [], 0])[0]))
-
-    # dv_mauthner_r_n = list(map(lambda x: -1*(2*x - 1), collect_varb_across_ec([wik_mauthner_r], 'n', 'Left Traj Percentage', [0, [], 0])[0]))
-
-    # dv_mauthner_l_bright = list(map(lambda x: -1*(2*x - 1), collect_varb_across_ec([wik_mauthner_l], 'l', 'Correct Trajectory Percentage BRight', [0, [], 0])[0]))
-
-    # dv_mauthner_l_bleft = list(map(lambda x: 2*x - 1, collect_varb_across_ec([wik_mauthner_l], 'l', 'Correct Trajectory Percentage BLeft', [0, [], 0])[0]))
-
-    # dv_mauthner_r_bright = list(map(lambda x: -1*(2*x - 1), collect_varb_across_ec([wik_mauthner_r], 'l', 'Correct Trajectory Percentage BRight', [0, [], 0])[0]))
-
-    # dv_mauthner_r_bleft = list(map(lambda x: 2*x - 1, collect_varb_across_ec([wik_mauthner_r], 'l', 'Correct Trajectory Percentage BLeft', [0, [], 0])[0]))   
+#  #   plot_varb_over_ecs([dv, lambda x: (2*x -1)], [dv2, lambda x: -1*(2*x - 1)])
 
 
-    # First show the clipped KDE plots for N trials in control and both mauthner ablated cases. 
-    # Its key to have a pairwise comparison for barriers. You want a pointplot w ste of the mean
-    # for each condition to the next in DEEP black. Then you want the individual datapoints with
-    # lines pointing from no barriers to barrier conditions in both on side of mauthner and
-    # opposite side of mauthner cases (4 total panels). you want paired ttests for each setup. THese can be in
-    # alpha dodger blue to indicate left of barrier, pink for right of barrier. so gray points
-    # to corresponding blue and pink points. And a black error barred mean change with sig changes.
-    # if these are inconclusive you can speculate as to the reason why, but this was the original
-    # data that made me say "wow!" so it should look right.
+# # MAUTHNER PLOTS
 
-    # for statistics, take the absolute value of each condition's preference index data to compare across conditions with unpaired tests. for mauthner, use a test on each condition. 
+# # ALL LEFT TRAJECTORY DATA. MAP lambda x: -1*(2*x - 1) to get preference index. (right turns - left turns / turns)
 
-   # cp = sb.color_palette('hls', 8)
-   # fig, (ax, ax2) = pl.subplots(1, 2)
-   # sb.kdeplot(dv_ltp, color=cp[0], clip=[-1, 1], ax=ax)
-   # sb.kdeplot(dv_mauthner_l_n, color=cp[1], clip=[-1, 1], ax=ax)
-  #  sb.kdeplot(dv_mauthner_l_bright, color=cp[2], clip=[-1, 1], ax=ax)
-   # sb.kdeplot(dv_mauthner_l_bleft, color=cp[3], clip=[-1, 1], ax=ax)
-   # sb.kdeplot(dv_mauthner_r_n, color=cp[4], clip=[-1, 1], ax=ax)
-#    sb.kdeplot(dv_mauthner_r_bleft, color=cp[5], clip=[-1, 1], ax=ax)
- #   sb.kdeplot(dv_mauthner_r_bright, color=cp[6], clip=[-1, 1], ax=ax)
+#     # dv_ltp = list(map(lambda x: -1*(2*x - 1), np.concatenate(collect_varb_across_ec([four_b, red24mm_4mmdist, red12mm_4mmdist_2h, red12mm_4mmdist, red48mm_8mmdist_2h, red48mm_8mmdist], 'n', 'Left Traj Percentage', [0, [], 1]))))
 
-   # ax.set_xlim([-1, 1])
+#     # dv_mauthner_l_n = list(map(lambda x: -1*(2*x - 1), collect_varb_across_ec([wik_mauthner_l], 'n', 'Left Traj Percentage', [0, [], 0])[0]))
 
-  #  boxplot_across_conditions([dv_ltp, dv_mauthner_l_n, dv_mauthner_l_bright, dv_mauthner_l_bleft,
-   #                            dv_mauthner_r_n, dv_mauthner_r_bleft, dv_mauthner_r_bright], cp)
+#     # dv_mauthner_r_n = list(map(lambda x: -1*(2*x - 1), collect_varb_across_ec([wik_mauthner_r], 'n', 'Left Traj Percentage', [0, [], 0])[0]))
 
-#    pl.show()
-#    p_rn_rbright = ttest_ind(list(map(lambda x: -1*(2*x - 1), dv_mauthner_r_n[0])), list(map(lambda x: -1*(2*x - 1), dv_mauthner_r_bright[0])))
+#     # dv_mauthner_l_bright = list(map(lambda x: -1*(2*x - 1), collect_varb_across_ec([wik_mauthner_l], 'l', 'Correct Trajectory Percentage BRight', [0, [], 0])[0]))
 
-  #  mauth_l_ec = experiment_collector(wik_mauthner_l, ['l', 'n'], [0, [], 0]) #, wik_mauthner_l)
-#    plot_all_results(mauth_l_ec)
- #   mauth_r_ec = experiment_collector(wik_mauthner_r, ['l', 'n'], [0, [], 0]) # wik_mauthner_r)
- #    pairwise_l_to_n_PI(mauth_l_ec, mauth_r_ec)
- #   plot_all_results(mauth_r_ec)
+#     # dv_mauthner_l_bleft = list(map(lambda x: 2*x - 1, collect_varb_across_ec([wik_mauthner_l], 'l', 'Correct Trajectory Percentage BLeft', [0, [], 0])[0]))
+
+#     # dv_mauthner_r_bright = list(map(lambda x: -1*(2*x - 1), collect_varb_across_ec([wik_mauthner_r], 'l', 'Correct Trajectory Percentage BRight', [0, [], 0])[0]))
+
+#     # dv_mauthner_r_bleft = list(map(lambda x: 2*x - 1, collect_varb_across_ec([wik_mauthner_r], 'l', 'Correct Trajectory Percentage BLeft', [0, [], 0])[0]))   
 
 
+#     # First show the clipped KDE plots for N trials in control and both mauthner ablated cases. 
+#     # Its key to have a pairwise comparison for barriers. You want a pointplot w ste of the mean
+#     # for each condition to the next in DEEP black. Then you want the individual datapoints with
+#     # lines pointing from no barriers to barrier conditions in both on side of mauthner and
+#     # opposite side of mauthner cases (4 total panels). you want paired ttests for each setup. THese can be in
+#     # alpha dodger blue to indicate left of barrier, pink for right of barrier. so gray points
+#     # to corresponding blue and pink points. And a black error barred mean change with sig changes.
+#     # if these are inconclusive you can speculate as to the reason why, but this was the original
+#     # data that made me say "wow!" so it should look right.
 
-#   sb.distplot(list(map(lambda x: -1*(2*x - 1), np.concatenate(dv_ltp))), color=cp[0], kde=False)
-#   sb.distplot(list(map(lambda x: -1*(2*x - 1), dv_mauthner_l_n[0])), color=cp[1], kde=False)
-#   sb.distplot(list(map(lambda x: -1*(2*x - 1), dv_mauthner_r_n[0])), color=cp[2], kde=False)
+#     # for statistics, take the absolute value of each condition's preference index data to compare across conditions with unpaired tests. for mauthner, use a test on each condition. 
 
-# cut it at -1, 1. 
+#    # cp = sb.color_palette('hls', 8)
+#    # fig, (ax, ax2) = pl.subplots(1, 2)
+#    # sb.kdeplot(dv_ltp, color=cp[0], clip=[-1, 1], ax=ax)
+#    # sb.kdeplot(dv_mauthner_l_n, color=cp[1], clip=[-1, 1], ax=ax)
+#   #  sb.kdeplot(dv_mauthner_l_bright, color=cp[2], clip=[-1, 1], ax=ax)
+#    # sb.kdeplot(dv_mauthner_l_bleft, color=cp[3], clip=[-1, 1], ax=ax)
+#    # sb.kdeplot(dv_mauthner_r_n, color=cp[4], clip=[-1, 1], ax=ax)
+# #    sb.kdeplot(dv_mauthner_r_bleft, color=cp[5], clip=[-1, 1], ax=ax)
+#  #   sb.kdeplot(dv_mauthner_r_bright, color=cp[6], clip=[-1, 1], ax=ax)
+
+#    # ax.set_xlim([-1, 1])
+
+#   #  boxplot_across_conditions([dv_ltp, dv_mauthner_l_n, dv_mauthner_l_bright, dv_mauthner_l_bleft,
+#    #                            dv_mauthner_r_n, dv_mauthner_r_bleft, dv_mauthner_r_bright], cp)
+
+# #    pl.show()
+# #    p_rn_rbright = ttest_ind(list(map(lambda x: -1*(2*x - 1), dv_mauthner_r_n[0])), list(map(lambda x: -1*(2*x - 1), dv_mauthner_r_bright[0])))
+
+#   #  mauth_l_ec = experiment_collector(wik_mauthner_l, ['l', 'n'], [0, [], 0]) #, wik_mauthner_l)
+# #    plot_all_results(mauth_l_ec)
+#  #   mauth_r_ec = experiment_collector(wik_mauthner_r, ['l', 'n'], [0, [], 0]) # wik_mauthner_r)
+#  #    pairwise_l_to_n_PI(mauth_l_ec, mauth_r_ec)
+#  #   plot_all_results(mauth_r_ec)
 
 
-   # each lesion has a significant effect on preference index. 
 
-  #  p_n_to_l = ttest_ind(list(map(lambda x: -1*(2*x - 1), np.concatenate(dv_ltp))),
-  #                      list(map(lambda x: -1*(2*x - 1), dv_mauthner_l_n[0])))
+# #   sb.distplot(list(map(lambda x: -1*(2*x - 1), np.concatenate(dv_ltp))), color=cp[0], kde=False)
+# #   sb.distplot(list(map(lambda x: -1*(2*x - 1), dv_mauthner_l_n[0])), color=cp[1], kde=False)
+# #   sb.distplot(list(map(lambda x: -1*(2*x - 1), dv_mauthner_r_n[0])), color=cp[2], kde=False)
 
-  #  p_n_to_r = ttest_ind(list(map(lambda x: -1*(2*x - 1), np.concatenate(dv_ltp))),
-  #                      list(map(lambda x: -1*(2*x - 1), dv_mauthner_r_n[0])))
+# # cut it at -1, 1. 
 
 
-#   boxplot_across_conditions(
+#    # each lesion has a significant effect on preference index. 
+
+#   #  p_n_to_l = ttest_ind(list(map(lambda x: -1*(2*x - 1), np.concatenate(dv_ltp))),
+#   #                      list(map(lambda x: -1*(2*x - 1), dv_mauthner_l_n[0])))
+
+#   #  p_n_to_r = ttest_ind(list(map(lambda x: -1*(2*x - 1), np.concatenate(dv_ltp))),
+#   #                      list(map(lambda x: -1*(2*x - 1), dv_mauthner_r_n[0])))
+
+
+# #   boxplot_across_conditions(
    
 
-   # COULD MAKE ARGUMENT THAT SOME HAVE INCOMPLETE LESIONS, SO ONES WITH INCOMPLETE LESIONS ARE INHIBITED, OTHERS
-   # STAY THE SAME. 
+#    # COULD MAKE ARGUMENT THAT SOME HAVE INCOMPLETE LESIONS, SO ONES WITH INCOMPLETE LESIONS ARE INHIBITED, OTHERS
+#    # STAY THE SAME. 
    
    
   
@@ -2561,31 +2598,33 @@ if __name__ == '__main__':
 
  
 
-# TODO 9/20/2021
+# # TODO 9/20/2021
 
-# get a collision metric for each condition collector. the collision metric is the
-# amount of collisions total divided by the number of incorrect decisions.
+# # get a collision metric for each condition collector. the collision metric is the
+# # amount of collisions total divided by the number of incorrect decisions.
 
-# do mauthner trajectory analysis.
-
-
-# this is a function you can call on no barrier escape objects. (e.g. escape_nb.infer_collisions(escape_obj_w_barrier). generalize it to many compiled escapes -- each obj now has an initial condition already called. 
+# # do mauthner trajectory analysis.
 
 
-
-
-# TODO
-
-# tell the tale of the mauthner experiment in the parlance of PI.
-# yield preditive PIs for each case. all the data you need is in the experiment collectors above.
-
-# align all n-trial escapes from red barrier trials into the initial conditions
-# for each experiment in red barrier trials. cool.
-
-# navigation plot. make sure you understand exactly what the stat is.
-# current thought is "No. Visits" (in legend say filtered w 2D gaussian).
+# # this is a function you can call on no barrier escape objects. (e.g. escape_nb.infer_collisions(escape_obj_w_barrier). generalize it to many compiled escapes -- each obj now has an initial condition already called. 
 
 
 
 
+# # TODO
 
+# # tell the tale of the mauthner experiment in the parlance of PI.
+# # yield preditive PIs for each case. all the data you need is in the experiment collectors above.
+
+# # align all n-trial escapes from red barrier trials into the initial conditions
+# # for each experiment in red barrier trials. cool.
+
+# # navigation plot. make sure you understand exactly what the stat is.
+# # current thought is "No. Visits" (in legend say filtered w 2D gaussian).
+
+
+
+# # whenever i run 061821_6, you get a long list of 10, nan. also 063021_6. where is this from? 
+
+# # Write a function that takes a single condition and blocks off regions of space to see where the
+# # most effective diff is. 
