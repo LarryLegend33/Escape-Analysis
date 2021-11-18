@@ -1508,7 +1508,7 @@ def plot_collision_stat(all_collisions, num_n_trials):
     return collision_stats_to_percentage
     
 
-def infer_collisions(fish_experiment_list, plotornot):
+def infer_collisions(fish_experiment_list, plotornot, exclude_win):
     all_n_trajectories = get_n_trajectories(fish_experiment_list)
     x_escape_n, y_escape_n = all_n_trajectories
     print(len(x_escape_n))
@@ -1528,6 +1528,8 @@ def infer_collisions(fish_experiment_list, plotornot):
 
             for trial, xy in enumerate(esc_obj.xy_coords_by_trial):
                 angle, mag = esc_obj.initial_conditions[trial][0:2]
+                if np.abs(np.degrees(angle)) < exclude_win or np.abs(np.degrees(angle)) > 180 - exclude_win:
+                    continue
                 mag += (esc_obj.barrier_diam / 2)
                 if 0 <= angle < np.pi / 2:
                     barrier_x = np.sin(angle) * mag
@@ -1889,7 +1891,7 @@ def hairplot_collisionmap(ec_light, ec_dark):
     cmap = 'BuPu'
     hm_alpha = .6
     line_alpha = .2
-    hm_bins = 30
+    hm_bins = 20
     linewidth = .7
     for bl_coords, bl_collision in zip(light_data['Barrier On Left Trajectories'],
                                        light_data['Collision Trials BLeft']):
@@ -2420,10 +2422,6 @@ if __name__ == '__main__':
                        '061521_2', '061521_3', '061521_4', '061521_5',
                        '061521_6']
 
-#   #  collision_stats, num_n_trials = infer_collisions([red24mm_4mmdist_ec], False)
-#   #  plot_collision_stat(collision_stats, num_n_trials)
-
-
 
     red12mm_4mmdist = ["061721_1", "061721_2", "061721_3", "061721_4", "061721_5",
                        "061721_6", "061721_7", "061821_1", "061821_2", "061821_3", 
@@ -2460,16 +2458,28 @@ if __name__ == '__main__':
                           "080221_7", "080321_1", "080321_2", "080321_3"]
 
 
-    viswin = 0
+
+    # 15 feels right. not really enough data in the 5 wins for conclusive results, and
+    # spreading to 15 puts enough data for clear error bars. if you bin by 5, the 15 degree
+    # window is already at 80% in four_b. 10 is definitely too close.
+
+    # TO DO NEXT: make sure your h to b plots are right. they are so consistent that they must be
+    # revealing something fundamental. good work today though! 
+    
+
+
+
+    
+    viswin = 15
     visfunc = lambda x: (-180 + viswin < x < -viswin) or (
         viswin < x < 180-viswin)
 
 #    ecs_virtual = experiment_collector(virtual, ['v', 'i', 'n'], [0, lambda x: True, 1])
     
-   # ec_fourb = experiment_collector(four_b, ['l', 'd', 'n'],
-  #                                   [0, visfunc, 1])
+    ec_fourb = experiment_collector(four_b, ['l', 'd', 'n'],
+                                    [0, visfunc, 1])
 
-    hm = hairplot_heatmap2(ec_fourb[0])
+    hm = hairplot_heatmap2(ec_fourb[2])
     hairplot_collisionmap(ec_fourb[0], ec_fourb[1])
   #  ax_dark = hairplot_collisionmap(ec_fourb[0], ec_fourb[1])
  #   ax_light = hairplot_collisionmap(ec_fourb, 0, 9)
@@ -2480,83 +2490,83 @@ if __name__ == '__main__':
     # make sure it is correct. Say because we saw a significant difference in approach angle, we
     # wondered whether the correct trajectory rate held across retinal occupancies. It didn't.
     # We used the 20 window. Show heatplots for all of these. 
+
+    white_and_virtual_list = [four_w, virtual, virtual]
+    red_b_list = [four_b, red24mm_4mmdist, red12mm_4mmdist_2h, red12mm_4mmdist, red48mm_8mmdist_2h, red48mm_8mmdist]
+    collision_stats, num_n_trials = infer_collisions(red_b_list+white_and_virtual_list, False, viswin)
+    plot_collision_stat(collision_stats, num_n_trials)
     
-#    plot_all_results(ec_fourb)
-
-
-
         
-#     ec_fourw = experiment_collector(four_w, ['l', 'n'],
-  #                                   [0, visfunc, 1])
-#     coordmat_l, coordmat_l = hairplot_heatmap(ec_fourw, 0)
- #    plot_all_results(ec_fourw)
-
-# # used to test stim and cstart detection -- perfect! 
-# #    four_b_1 = ['022619_2', '030519_1']
-
-#     coordmat_l, coordmat_l = hairplot_heatmap(ec_fourb, 1)
-#     plot_all_results(ec_fourb)
-
-#     red24mm_4mmdist_ec = experiment_collector(red24mm_4mmdist, ['l', 'n'],
-#                                               [0, visfunc, 1])
-#     plot_all_results(red24mm_4mmdist_ec)
-
-#     red12mm_4mmdist_ec_2h = experiment_collector(red12mm_4mmdist_2h,
-#                                                  ['l', 'n'], [0, visfunc, 1])
-#     plot_all_results(red12mm_4mmdist_ec_2h)
-
-   #  red12mm_4mmdist_ec = experiment_collector(red12mm_4mmdist,
-    #                                           ['l', 'n'], [0, visfunc, 1])
-    # plot_all_results(red12mm_4mmdist_ec)
-
-
-#     red48mm_8mmdist_ec_2h = experiment_collector(red48mm_8mmdist_2h,
-#                                                  ['l', 'n'], [0, visfunc, 1])
-#     plot_all_results(red48mm_8mmdist_ec_2h)
-
-#     red48mm_8mmdist_ec = experiment_collector(red48mm_8mmdist,
-#                                               ['l', 'n'], [0, visfunc, 1])
-#     plot_all_results(red48mm_8mmdist_ec)
-
-#     mauth_l_ec = experiment_collector(wik_mauthner_l, ['l', 'n'],
-#                                       [0, visfunc, 0])
-#     mauth_r_ec = experiment_collector(wik_mauthner_r, ['l', 'n'],
-#                                       [0, visfunc, 0])
-#     pairwise_l_to_n_PI(mauth_l_ec, mauth_r_ec)
- 
-# #     fishlist = [four_b, red24mm_4mmdist, red12mm_4mmdist_2h, red12mm_4mmdist,
-# #                 red48mm_8mmdist_2h, red48mm_8mmdist, four_w]
-
-
-# #     collect_collision_stat(fishlist, 'l', np.ones(len(fishlist)), [0, visfunc, 1])
-   
-#     """ PLOTS FOR PAPER """
-
-#     white_and_virtual_list = [four_w, virtual, virtual]
+    ec_fourw = experiment_collector(four_w, ['l', 'n'],
+                                    [0, visfunc, 1])
     
-#     white_and_virtual_bleft = collect_varb_across_ec(white_and_virtual_list, ['l', 'v', 'i'],
-#                                                     "Correct Trajectory Percentage BLeft", [0, visfunc, 1])
-#     white_and_virtual_bright = collect_varb_across_ec(white_and_virtual_list, ['l', 'v', 'i'],
-#                                                      "Correct Trajectory Percentage BRight", [0, visfunc, 1])
-#     white_and_virtual_correct = collect_varb_across_ec(white_and_virtual_list, ['l', 'v', 'i'],
-#                                                     "Correct Trajectory Percentage", [0, visfunc, 1])
+    coordmat_l, coordmat_l = hairplot_heatmap(ec_fourw, 0)
+    plot_all_results(ec_fourw)
 
-#     plot_varb_over_ecs([white_and_virtual_bleft, lambda x: (2*x -1)],
-#                        [white_and_virtual_bright, lambda x: -1*(2*x - 1)])
+# used to test stim and cstart detection -- perfect! 
+#    four_b_1 = ['022619_2', '030519_1']
 
-#     plot_varb_over_ecs([white_and_virtual_correct, lambda x: 2*x -1])
+    coordmat_l, coordmat_l = hairplot_heatmap(ec_fourb, 1)
+    plot_all_results(ec_fourb)
 
-#     red_bleft = collect_varb_across_ec([four_b, red24mm_4mmdist, red12mm_4mmdist_2h, red12mm_4mmdist, red48mm_8mmdist_2h, red48mm_8mmdist], 'l', 'Correct Trajectory Percentage BLeft', [0, visfunc, 1])
+    red24mm_4mmdist_ec = experiment_collector(red24mm_4mmdist, ['l', 'n'],
+                                              [0, visfunc, 1])
+    plot_all_results(red24mm_4mmdist_ec)
 
-#     red_bright = collect_varb_across_ec([four_b, red24mm_4mmdist, red12mm_4mmdist_2h, red12mm_4mmdist, red48mm_8mmdist_2h, red48mm_8mmdist], 'l', 'Correct Trajectory Percentage BRight', [0, visfunc, 1])
+    red12mm_4mmdist_ec_2h = experiment_collector(red12mm_4mmdist_2h,
+                                                 ['l', 'n'], [0, visfunc, 1])
+    plot_all_results(red12mm_4mmdist_ec_2h)
 
-#     red_correct = collect_varb_across_ec([four_b, red24mm_4mmdist, red12mm_4mmdist_2h, red12mm_4mmdist, red48mm_8mmdist_2h, red48mm_8mmdist], 'l', 'Correct Trajectory Percentage', [0, visfunc, 1])
+    red12mm_4mmdist_ec = experiment_collector(red12mm_4mmdist,
+                                              ['l', 'n'], [0, visfunc, 1])
+    plot_all_results(red12mm_4mmdist_ec)
 
 
-#     plot_varb_over_ecs([red_bleft, lambda x: (2*x -1)],
-#                        [red_bright, lambda x: -1*(2*x - 1)])
+    red48mm_8mmdist_ec_2h = experiment_collector(red48mm_8mmdist_2h,
+                                                 ['l', 'n'], [0, visfunc, 1])
+    plot_all_results(red48mm_8mmdist_ec_2h)
 
-#     plot_varb_over_ecs([red_correct, lambda x: 2*x -1])
+    red48mm_8mmdist_ec = experiment_collector(red48mm_8mmdist,
+                                              ['l', 'n'], [0, visfunc, 1])
+    plot_all_results(red48mm_8mmdist_ec)
+
+    mauth_l_ec = experiment_collector(wik_mauthner_l, ['l', 'n'],
+                                      [0, visfunc, 0])
+    mauth_r_ec = experiment_collector(wik_mauthner_r, ['l', 'n'],
+                                      [0, visfunc, 0])
+    pairwise_l_to_n_PI(mauth_l_ec, mauth_r_ec)
+ 
+#     fishlist = [four_b, red24mm_4mmdist, red12mm_4mmdist_2h, red12mm_4mmdist,
+#                 red48mm_8mmdist_2h, red48mm_8mmdist, four_w]
+
+
+#     collect_collision_stat(fishlist, 'l', np.ones(len(fishlist)), [0, visfunc, 1])
+   
+    """ PLOTS FOR PAPER """
+
+    
+    white_and_virtual_bleft = collect_varb_across_ec(white_and_virtual_list, ['l', 'v', 'i'],
+                                                    "Correct Trajectory Percentage BLeft", [0, visfunc, 1])
+    white_and_virtual_bright = collect_varb_across_ec(white_and_virtual_list, ['l', 'v', 'i'],
+                                                     "Correct Trajectory Percentage BRight", [0, visfunc, 1])
+    white_and_virtual_correct = collect_varb_across_ec(white_and_virtual_list, ['l', 'v', 'i'],
+                                                    "Correct Trajectory Percentage", [0, visfunc, 1])
+
+    plot_varb_over_ecs([white_and_virtual_bleft, lambda x: (2*x -1)],
+                       [white_and_virtual_bright, lambda x: -1*(2*x - 1)])
+
+    plot_varb_over_ecs([white_and_virtual_correct, lambda x: 2*x -1])
+
+    red_bleft = collect_varb_across_ec(red_b_list, 'l', 'Correct Trajectory Percentage BLeft', [0, visfunc, 1])
+
+    red_bright = collect_varb_across_ec(red_b_list, 'l', 'Correct Trajectory Percentage BRight', [0, visfunc, 1])
+
+    red_correct = collect_varb_across_ec(red_b_list, 'l', 'Correct Trajectory Percentage', [0, visfunc, 1])
+
+    plot_varb_over_ecs([red_bleft, lambda x: (2*x -1)],
+                       [red_bright, lambda x: -1*(2*x - 1)])
+
+    plot_varb_over_ecs([red_correct, lambda x: 2*x -1])
 
 
 
