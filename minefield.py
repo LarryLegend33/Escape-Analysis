@@ -38,12 +38,6 @@ import matplotlib
 # and plotting the escape trajectory relative to a barrier position
 
 
-# initial results computed with cstart_time_thresh = 150, angle thresh = 30, std = 1
-
-
-
-
-
 matplotlib.rcParams['pdf.fonttype'] = 42
 
 
@@ -69,6 +63,7 @@ class Condition_Collector:
         self.condition = condition
         self.trajectory_stat_start = 20
         self.escape_data = {'Heading vs Barrier': [],
+                            'Heading vs Barrier Starting Zero': [], 
                             'Distance From Barrier After Escape': [],
                             'Collision Percentage': [],
                             'Total Valid Trials': 0,
@@ -207,9 +202,9 @@ class Condition_Collector:
                 except TypeError:
                     num_gfs = 1
                 tap_times.append(num_gfs / 200.0)
-                last_x.append(escape_obj.xy_coords_by_trial[trial][1][
+                last_x.append(escape_obj.xy_coords_by_trial[trial][0][
                     escape_obj.timerange[1]])
-                last_y.append(escape_obj.xy_coords_by_trial[trial][0][
+                last_y.append(escape_obj.xy_coords_by_trial[trial][1][
                     escape_obj.timerange[1]])
                 barrier_xy_by_trial.append(
                     escape_obj.barrier_xy_by_trial[trial])
@@ -512,9 +507,9 @@ class Escapes:
         self.cstarts_per_trial = []
         self.all_tailangles = []
         self.tailangle_sums = []
-        self.ha_in_timeframe = []
-        self.ba_in_timeframe = []
-        self.h_vs_b_by_trial = []
+        self.ha_starting_zero = []
+        self.ba_starting_zero = []
+        self.h_vs_b_starting_zero_by_trial = []
         self.initial_conditions = []
         if sub_class == ():
             self.load_experiment()
@@ -537,9 +532,9 @@ class Escapes:
 
         if trialfilter != ():
             trialfilter = trialfilter[0]
-            h_vs_b_by_trial = [self.h_vs_b_by_trial[i] for i in trialfilter]
+            h_vs_b_by_trial = [self.h_vs_b_starting_zero_by_trial[i] for i in trialfilter]
         else:
-            h_vs_b_by_trial = self.h_vs_b_by_trial
+            h_vs_b_by_trial = self.h_vs_b_starting_zero_by_trial
             
         h_vs_b_mod = [np.array(hb_trial) if hb_trial[0] > 0 else -1*np.array(
             hb_trial) for hb_trial in h_vs_b_by_trial]
@@ -737,7 +732,7 @@ class Escapes:
         for trial, (vid_file, xy) in enumerate(
                 zip(self.movie_id, self.xy_coords_by_trial)):
             if xy[0] == []:
-                self.ha_in_timeframe.append([])
+                self.ha_starting_zero.append([])
                 self.contours_by_trial.append([])
                 continue
             heading_vec_list = []
@@ -753,13 +748,16 @@ class Escapes:
                 thresh_vid = cv2.VideoWriter(
                     dr + '/thresh' + str(trial) + self.condition + '.AVI',
                     fourcc, fps, (80, 80), True)
-            xcoords = xy[0][self.timerange[0]:self.timerange[1]]
-            ycoords = xy[1][self.timerange[0]:self.timerange[1]]
+#            xcoords = xy[0][self.timerange[0]:self.timerange[1]]
+#            ycoords = xy[1][self.timerange[0]:self.timerange[1]]
+            xcoords = xy[0][0:self.timerange[1]]
+            ycoords = xy[1][0:self.timerange[1]]
             missed_inds_trial = self.missed_inds_by_trial[trial]
     # the arrays are indexed in reverse from how you'd like to plot.
             for frame, (x, y) in enumerate(zip(xcoords, ycoords)):
                 y = 1024 - y
-                im_color = vid.get_data(self.timerange[0] + frame)
+#                im_color = vid.get_data(self.timerange[0] + frame)
+                im_color = vid.get_data(frame)
                 im = cv2.cvtColor(im_color, cv2.COLOR_BGR2GRAY)
                 matched_background = self.find_correct_background(trial)
                 background_roi = slice_background(
@@ -770,7 +768,7 @@ class Escapes:
                 th = cv2.cvtColor(th, cv2.COLOR_GRAY2RGB)
                 if frame in missed_inds_trial:
                     heading_vec_list.append([np.nan, np.nan])
-                    if makevid:
+                    if makevid and frame >= self.timerange[0]:
                         ha_vid.write(np.zeros(
                             [im_color.shape[0],
                              im_color.shape[1],
@@ -781,7 +779,7 @@ class Escapes:
                     continue
                 if math.isnan(mid_x):
                     heading_vec_list.append([mid_x, mid_y])
-                    if makevid:
+                    if makevid and frame >= self.timerange[0]:
                         ha_vid.write(im_color)
                         thresh_vid.write(th)
                     continue
@@ -800,7 +798,7 @@ class Escapes:
                     [fish_com_x, fish_com_y]) - np.array([fish_middle_x,
                                                           fish_middle_y])
                 heading_vec_list.append(vec_heading)
-                if makevid:
+                if makevid and frame >= self.timerange[0]:
                     ha_vid.write(im_color)
                     thresh_vid.write(th)
    
@@ -820,8 +818,8 @@ class Escapes:
 
             norm_orientation = [-ang if ang < 0 else 2 * np.pi - ang
                                 for ang in heading_angles]
-            self.ha_in_timeframe.append(norm_orientation)
-            self.contours_by_trial.append(contour_list)
+            self.ha_starting_zero.append(norm_orientation)
+            self.contours_by_trial.append(contour_list[self.timerange[0]:])
 
 # this function calculates a vector from the fish's position to the
 # barrier it is escaping
@@ -829,11 +827,13 @@ class Escapes:
     def vec_to_barrier(self):
         for trial, xy in enumerate(self.xy_coords_by_trial):
             if xy[0] == []:
-                self.ba_in_timeframe.append([])
+                self.ba_starting_zero.append([])
                 continue
             vecs_to_barrier = []
-            x = xy[0][self.timerange[0]:self.timerange[1]]
-            y = xy[1][self.timerange[0]:self.timerange[1]]
+#            x = xy[0][self.timerange[0]:self.timerange[1]]
+#            y = xy[1][self.timerange[0]:self.timerange[1]]
+            x = xy[0][0:self.timerange[1]]
+            y = xy[1][0:self.timerange[1]]
             barr_xy = np.array(self.barrier_xy_by_trial[trial])
             for fish_x, fish_y in zip(x, y):
                 fish_xy = np.array([fish_x, fish_y])
@@ -844,16 +844,16 @@ class Escapes:
                       for vec in vecs_to_barrier]
             transformed_angles = [2*np.pi + ang if ang < 0 else ang
                                   for ang in angles]
-            self.ba_in_timeframe.append(transformed_angles)
+            self.ba_starting_zero.append(transformed_angles)
 
 # this function compares the heading angle of the fish to the
 # vector to the barrier over time.
 
     def heading_v_barrier(self):
-        for h_angles, b_angles in zip(self.ha_in_timeframe,
-                                      self.ba_in_timeframe):
+        for h_angles, b_angles in zip(self.ha_starting_zero,
+                                      self.ba_starting_zero):
             if h_angles == []:
-                self.h_vs_b_by_trial.append([])
+                self.h_vs_b_starting_zero_by_trial.append([])
                 continue
             diffs = []
             right_or_left = []
@@ -881,7 +881,7 @@ class Escapes:
                 diffs.append(diff)
             diffs = [-df if dirc == 'l' else df
                      for df, dirc in zip(diffs, right_or_left)]
-            self.h_vs_b_by_trial.append(diffs)
+            self.h_vs_b_starting_zero_by_trial.append(diffs)
 
 # Think of barrier axis as the X axis of the unit circle.
 # ha to the right of the barrier are negative
@@ -897,9 +897,10 @@ class Escapes:
             if xyc[0] == []:
                 self.initial_conditions.append([])
                 continue
-            ha_avg = np.nanmean(self.ha_in_timeframe[trial][0:self.pre_c])
-            ba_avg = np.nanmean(self.ba_in_timeframe[trial][0:self.pre_c])
-            h_to_b = np.nanmean(self.h_vs_b_by_trial[trial][0:self.pre_c])
+            ha_avg = np.nanmean(self.ha_starting_zero[trial][self.timerange[0]:self.timerange[0]+self.pre_c])
+            ba_avg = np.nanmean(self.ba_starting_zero[trial][self.timerange[0]:self.timerange[0]+self.pre_c])
+            h_to_b = np.nanmean(self.h_vs_b_starting_zero_by_trial[trial][
+                self.timerange[0]:self.timerange[0]+self.pre_c])
             barr_xy = np.array(self.barrier_xy_by_trial[trial])
             xy = self.xy_coords_by_trial[trial]
             fish_x = np.nanmean(
@@ -1001,7 +1002,7 @@ class Escapes:
                 self.cstart_rel_to_last_bout.append(np.nan)
                 self.cstart_angles.append(np.nan)
                 self.escape_latencies.append(np.nan)
-                self.pre_escape_bouts.append(np.nan)
+                self.pre_escape_bouts.append([])
                 continue
             tail_kern = Gaussian1DKernel(self.cstart_filter_std)
             stim_init = self.stim_init_times[trial]
@@ -1013,22 +1014,28 @@ class Escapes:
                 pre_xy_file = [pre_xy_file.tolist()]
             pre_xcoords = []
             pre_ycoords = []
-            for coordstring in pre_xy_file[-1000:]:
+            # go back three seconds before barrier entry. 
+            for coordstring in pre_xy_file[-600:]:
                 x, y = x_and_y_coord(coordstring)
                 pre_xcoords.append(x)
                 pre_ycoords.append(y)
             pre_xcoords += self.xy_coords_by_trial[
-                trial][0][0:stim_init+self.timerange[0]:2]
+               trial][0][0:stim_init+self.timerange[0]:2]
             pre_ycoords += self.xy_coords_by_trial[
-                trial][1][0:stim_init+self.timerange[0]:2]
+               trial][1][0:stim_init+self.timerange[0]:2]
             vel_vector = [np.sqrt(
                np.dot(
                    [v2[0]-v1[0], v2[1]-v1[1]],
                    [v2[0]-v1[0], v2[1]-v1[1]])) for v1, v2 in sliding_window(
                        2, zip(pre_xcoords, pre_ycoords))]
             vv_filtered = gaussian_filter(vel_vector, 10)
+
             bout_inds = argrelextrema(
                 np.array(vv_filtered), np.greater_equal,  order=5)[0]
+
+
+            bi_norepeats = []
+            
             if len(bout_inds) != 0:
                 bi_thresh = [arg for arg in bout_inds if vv_filtered[arg] > .5]
                 if len(bi_thresh) != 0:
@@ -1042,17 +1049,22 @@ class Escapes:
                 #         np.zeros(len(bi_norepeats)), marker='.')
                 # pl.show()
 
-# THESE SEEM KIND OF ARBITRARY RIGHT NOW. BUT TRY IT.
-            bout_init_position = [[np.nanmean(pre_xcoords[bi-40:bi-30]),
-                                   np.nanmean(pre_ycoords[bi-40:bi-30])]
+
+            # this is 200 ms backwards. does that feel right no. just go back 10 frames. 
+            
+            bout_init_position = [[np.nanmean(pre_xcoords[bi-12:bi-10]),
+                                   np.nanmean(pre_ycoords[bi-12:bi-10])]
                                   for bi in bi_norepeats]
-            bout_post_position = [[np.nanmean(pre_xcoords[bi+10:bi+40]),
-                                   np.nanmean(pre_ycoords[bi+10:bi+40])]
+            bout_post_position = [[np.nanmean(pre_xcoords[bi+10:bi+12]),
+                                   np.nanmean(pre_ycoords[bi+10:bi+12])]
                                   for bi in bi_norepeats]
             disp_vecs = [[b[0]-a[0], b[1]-a[1]] for a,
                          b in zip(bout_init_position, bout_post_position)]
+
+            # angles between vectors. 
             dots = [np.dot(i, j) / (magvector(i) * magvector(j))
                     for i, j in sliding_window(2, disp_vecs)]
+            # assign pos or neg based on cross prod
             ang = [np.arccos(a) for a in dots]
             crosses = [np.cross(i, j) for i, j in sliding_window(2, disp_vecs)]
             bout_angles = []
@@ -1063,7 +1075,26 @@ class Escapes:
                     bout_angles.append(-1*a)
             if bout_angles:
                 print(bout_angles[-1])
+            # this also looks correct. 
+            fig, ax = pl.subplots(1, 3)
+            ax[0].plot(pre_xcoords, pre_ycoords)
+            barrier_x, barrier_y = self.barrier_xy_by_trial[trial]
+            barr = pl.Circle((barrier_x, barrier_y), self.barrier_diam / 2,
+                             fc='r')
+            ax[0].add_artist(barr)
+            ax[0].set_xlim([0, 1280])
+            ax[0].set_ylim([0, 1024])
+            ax[0].scatter(
+                [x for i, x in enumerate(pre_xcoords) if i in bi_norepeats],
+                [y for i, y in enumerate(pre_ycoords) if i in bi_norepeats],
+                color='r', s=2)
+            ax[1].plot(vv_filtered)
+            ax[1].scatter(bi_norepeats, np.zeros(len(bi_norepeats)), color='k')
+            ax[2].plot(bout_angles)
+            ax[0].set_aspect('equal')
+            pl.show()
             self.pre_escape_bouts.append(bout_angles)
+            
             c_thresh = self.cstart_angle_thresh
   #          cstart_window = [0, stim_init + 20]
  #           ta = convolve(self.tailangle_sums[trial][0:cstart_window[1]], tail_kern)
@@ -1120,13 +1151,16 @@ class Escapes:
                     print('towards')
                     self.cstart_rel_to_barrier.append(0)
 
+
+# bout_angles[-1] is the direction of the last bout. should be pos for right, neg for left. 
+# 
                 if bout_angles:
                     if np.sum(np.sign(
                             [c_start_angle,
                              bout_angles[-1]])) == 0:
-                        self.cstart_rel_to_last_bout.append(1)
-                    else:
                         self.cstart_rel_to_last_bout.append(0)
+                    else:
+                        self.cstart_rel_to_last_bout.append(1)
                 else:
                     self.cstart_rel_to_last_bout.append(np.nan)
 
@@ -1218,7 +1252,9 @@ class Escapes:
                 trial)+self.condition+'.AVI', 'ffmpeg')
             all_angles = []
             ha_adjusted = deque([np.mod(90-(np.degrees(angle)), 360)
-                                 for angle in self.ha_in_timeframe[trial]])
+                                 for angle in self.ha_starting_zero[trial][
+                                         self.timerange[0]:]])
+
             cnt = 0
             # make this a variable -- 25 should be added to timeframe multiple times. 
             for frame in range(self.timerange[1] - self.timerange[0]):
@@ -2464,11 +2500,12 @@ if __name__ == '__main__':
     # window is already at 80% in four_b. 10 is definitely too close.
 
     # TO DO NEXT: make sure your h to b plots are right. they are so consistent that they must be
-    # revealing something fundamental. good work today though! 
+    # revealing something fundamental. good work today though!
+
+
+    # h_vs_b_plot is completely correct as long as the angle calculations are good. bout that lead into the
+    # barrier zone is calculated by taking the gray coords right before barrierzone entry. 
     
-
-
-
     
     viswin = 15
     visfunc = lambda x: (-180 + viswin < x < -viswin) or (
@@ -2477,7 +2514,9 @@ if __name__ == '__main__':
 #    ecs_virtual = experiment_collector(virtual, ['v', 'i', 'n'], [0, lambda x: True, 1])
     
     ec_fourb = experiment_collector(four_b, ['l', 'd', 'n'],
-                                    [0, visfunc, 1])
+                                    [0, visfunc, 1], four_b)
+
+    plot_all_results(ec_fourb)
 
     hm = hairplot_heatmap2(ec_fourb[2])
     hairplot_collisionmap(ec_fourb[0], ec_fourb[1])
@@ -2493,8 +2532,8 @@ if __name__ == '__main__':
 
     white_and_virtual_list = [four_w, virtual, virtual]
     red_b_list = [four_b, red24mm_4mmdist, red12mm_4mmdist_2h, red12mm_4mmdist, red48mm_8mmdist_2h, red48mm_8mmdist]
-    collision_stats, num_n_trials = infer_collisions(red_b_list+white_and_virtual_list, False, viswin)
-    plot_collision_stat(collision_stats, num_n_trials)
+  #  collision_stats, num_n_trials = infer_collisions(red_b_list+white_and_virtual_list, False, viswin)
+ #   plot_collision_stat(collision_stats, num_n_trials)
     
         
     ec_fourw = experiment_collector(four_w, ['l', 'n'],
@@ -2597,9 +2636,9 @@ if __name__ == '__main__':
 
 """ FOR RUNNING FULL ANALYSIS ON ALL DATA """ 
 
-#     # ecs_bar = [experiment_collector(fish, ['l', 'd', 'n'], [0, lambda x: True, 1], fish) for fish in fishlist]
-#     # ecs_virtual = [experiment_collector(fish, ['v', 'i', 'n'], [0, lambda x: True, 1], fish) for fish in [virtual]]
-#     # ecs_mauth = [experiment_collector(fish, ['l', 'n'], [0, lambda x: True, 0], fish) for fish in [wik_mauthner_l, wik_mauthner_r]]
+    # ecs_bar = [experiment_collector(fish, ['l', 'd', 'n'], [0, lambda x: True, 1], fish) for fish in fishlist]
+    # ecs_virtual = [experiment_collector(fish, ['v', 'i', 'n'], [0, lambda x: True, 1], fish) for fish in [virtual]]
+    # ecs_mauth = [experiment_collector(fish, ['l', 'n'], [0, lambda x: True, 0], fish) for fish in [wik_mauthner_l, wik_mauthner_r]]
 
 
 
