@@ -38,6 +38,12 @@ import matplotlib
 # and plotting the escape trajectory relative to a barrier position
 
 
+# Next thing to do is figure out where to compare the previousbouts to trajectory directions.
+# Not so easy in current setup. i think bl_trials and br_trials will work.
+# index those in a listcomp and grab the sign of the last N bouts. see if the directions are correlated,
+# but probably exclude if the prevbout angle is straight. cite eva for turn mag. 
+
+
 matplotlib.rcParams['pdf.fonttype'] = 42
 
 
@@ -63,7 +69,6 @@ class Condition_Collector:
         self.condition = condition
         self.trajectory_stat_start = 20
         self.escape_data = {'Heading vs Barrier': [],
-                            'Heading vs Barrier Starting Zero': [], 
                             'Distance From Barrier After Escape': [],
                             'Collision Percentage': [],
                             'Total Valid Trials': 0,
@@ -85,6 +90,7 @@ class Condition_Collector:
                             'Left Vs Right Trajectories': [0, 0],
                             'Left Traj Percentage': [],
                             'CStart Rel to Prevbout': [],
+                            'PrevBout Angles': [],
                             'Taps Per Entry Into Arena': [],
                             'Total Time In Center': [],
                             'Barrier On Left Trajectories': [],
@@ -1028,22 +1034,46 @@ class Escapes:
                    [v2[0]-v1[0], v2[1]-v1[1]],
                    [v2[0]-v1[0], v2[1]-v1[1]])) for v1, v2 in sliding_window(
                        2, zip(pre_xcoords, pre_ycoords))]
-            vv_filtered = gaussian_filter(vel_vector, 10)
+            vv_filtered = gaussian_filter(vel_vector, 6)
 
-            bout_inds = argrelextrema(
+            bout_inds_max = argrelextrema(
                 np.array(vv_filtered), np.greater_equal,  order=5)[0]
 
+            bout_inds_min = argrelextrema(
+                np.array(vv_filtered), np.less_equal,  order=5)[0]
 
             bi_norepeats = []
+            bi_norepeats_starts = []
+
+            if len(bout_inds_max) != 0:
+                if bout_inds_max[0] == 0:
+                    bout_inds_max = bout_inds_max[1:]
             
-            if len(bout_inds) != 0:
-                bi_thresh = [arg for arg in bout_inds if vv_filtered[arg] > .5]
+            if len(bout_inds_max) != 0:
+                bi_thresh = [arg for arg in bout_inds_max if vv_filtered[arg] > .6]
                 if len(bi_thresh) != 0:
                     fi = [bi_thresh[0]]
                 else:
                     fi = []
                 bi_norepeats = fi + [b for a, b in sliding_window(
                     2, bi_thresh) if b-a > 20]
+
+                if len(bout_inds_min) != 0 and len(bi_norepeats) != 0:
+                    if bi_norepeats[0] < bout_inds_min[0]:
+                        bout_inds_min = np.insert(bout_inds_min, 0, 0)
+                elif len(bi_norepeats) != 0:
+                    bout_inds_min = np.insert(bout_inds_min, 0, 0)
+
+                bi_min_assignment = [[b for b in bout_inds_min - bi if b < 0] for bi in bi_norepeats]
+                bi_norepeats_starts = [bout_inds_min[np.argmax(b)] for b in bi_min_assignment if b]
+                
+                
+
+            if len(bi_norepeats_starts) != len(bi_norepeats):
+                bi_norepeats_starts = []
+                bi_norepeats = []
+
+            
                 # pl.plot(vv_filtered)
                 # pl.plot(bi_norepeats,
                 #         np.zeros(len(bi_norepeats)), marker='.')
@@ -1051,13 +1081,19 @@ class Escapes:
 
 
             # this is 200 ms backwards. does that feel right no. just go back 10 frames. 
+
+            bout_init_position = [[pre_xcoords[bi],
+                                   pre_ycoords[bi]] for bi in bi_norepeats_starts]
+            bout_post_position = [[np.nanmean(pre_xcoords[bi]),
+                                   np.nanmean(pre_ycoords[bi])]
+                                  for bi in bi_norepeats]
             
-            bout_init_position = [[np.nanmean(pre_xcoords[bi-12:bi-10]),
-                                   np.nanmean(pre_ycoords[bi-12:bi-10])]
-                                  for bi in bi_norepeats]
-            bout_post_position = [[np.nanmean(pre_xcoords[bi+10:bi+12]),
-                                   np.nanmean(pre_ycoords[bi+10:bi+12])]
-                                  for bi in bi_norepeats]
+            # bout_init_position = [[np.nanmean(pre_xcoords[bi-12:bi-10]),
+            #                        np.nanmean(pre_ycoords[bi-12:bi-10])]
+            #                       for bi in bi_norepeats]
+            # bout_post_position = [[np.nanmean(pre_xcoords[bi+10:bi+12]),
+            #                        np.nanmean(pre_ycoords[bi+10:bi+12])]
+            #                       for bi in bi_norepeats]
             disp_vecs = [[b[0]-a[0], b[1]-a[1]] for a,
                          b in zip(bout_init_position, bout_post_position)]
 
@@ -1075,24 +1111,31 @@ class Escapes:
                     bout_angles.append(-1*a)
             if bout_angles:
                 print(bout_angles[-1])
-            # this also looks correct. 
-            fig, ax = pl.subplots(1, 3)
-            ax[0].plot(pre_xcoords, pre_ycoords)
-            barrier_x, barrier_y = self.barrier_xy_by_trial[trial]
-            barr = pl.Circle((barrier_x, barrier_y), self.barrier_diam / 2,
-                             fc='r')
-            ax[0].add_artist(barr)
-            ax[0].set_xlim([0, 1280])
-            ax[0].set_ylim([0, 1024])
-            ax[0].scatter(
-                [x for i, x in enumerate(pre_xcoords) if i in bi_norepeats],
-                [y for i, y in enumerate(pre_ycoords) if i in bi_norepeats],
-                color='r', s=2)
-            ax[1].plot(vv_filtered)
-            ax[1].scatter(bi_norepeats, np.zeros(len(bi_norepeats)), color='k')
-            ax[2].plot(bout_angles)
-            ax[0].set_aspect('equal')
-            pl.show()
+
+            print(len(bout_angles))
+            print(bout_angles)
+
+            # only the first bout's angle is missed b/c its not relative to a past bout.
+            # 
+                
+            # fig, ax = pl.subplots(1, 3)
+            # ax[0].plot(pre_xcoords, pre_ycoords)
+            # barrier_x, barrier_y = self.barrier_xy_by_trial[trial]
+            # barr = pl.Circle((barrier_x, barrier_y), self.barrier_diam / 2,
+            #                  fc='r')
+            # ax[0].add_artist(barr)
+            # ax[0].set_xlim([0, 1280])
+            # ax[0].set_ylim([0, 1024])
+            # ax[0].scatter(
+            #     [x for i, x in enumerate(pre_xcoords) if i in bi_norepeats_starts],
+            #     [y for i, y in enumerate(pre_ycoords) if i in bi_norepeats_starts],
+            #     color='r', s=2)
+            # ax[1].plot(vv_filtered)
+            # ax[1].scatter(bi_norepeats, np.zeros(len(bi_norepeats)), color='k')
+            # ax[1].scatter(bi_norepeats_starts, np.zeros(len(bi_norepeats_starts)), color='r')
+            # ax[2].plot(bout_angles)
+            # ax[0].set_aspect('equal')
+            # pl.show()
             self.pre_escape_bouts.append(bout_angles)
             
             c_thresh = self.cstart_angle_thresh
