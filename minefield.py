@@ -433,9 +433,20 @@ class Escapes:
         self.collisions = []
         self.collision_times = []
         self.collision_bound = 50
+        self.ha_starting_zero = []
+        self.ba_starting_zero = []
+        self.h_vs_b_starting_zero_by_trial = []
         self.cstart_filter_std = .5
         self.cstart_angle_thresh = 50
         self.cstart_time_thresh = 150
+        self.cstart_rel_to_last_bout = []
+        self.cstart_angles = []
+        self.cstart_rel_to_barrier = []
+        self.cstarts_per_trial = []
+        self.all_tailangles = []
+        self.tailangle_sums = []
+        self.initial_conditions = []
+
         if exp_type in ['l', 'd']:
             bstruct_and_br_label = 'b'
         elif exp_type in ['v', 'i']:
@@ -504,19 +515,9 @@ class Escapes:
         self.movie_id = sorted([directory + '/' + f_id
                                 for f_id in os.listdir(directory)
                                 if (f_id[-5:] == exp_type+'.AVI'
-                                    and f_id[0] == 't')])
+                                    and f_id[0:2] == 'ta')])
 
 # Make these dictionaries so you can put in arbitrary trial / value bindings
-        self.cstart_rel_to_last_bout = []
-        self.cstart_angles = []
-        self.cstart_rel_to_barrier = []
-        self.cstarts_per_trial = []
-        self.all_tailangles = []
-        self.tailangle_sums = []
-        self.ha_starting_zero = []
-        self.ba_starting_zero = []
-        self.h_vs_b_starting_zero_by_trial = []
-        self.initial_conditions = []
         if sub_class == ():
             self.load_experiment()
 
@@ -527,14 +528,6 @@ class Escapes:
     # pi is perfectly away. 
         
     def h_vs_b_plot(self, plot_fish, *trialfilter):
-        # h_vs_b_mod = [np.mod
-        #     hb_trial, 2*np.pi) for hb_trial in self.h_vs_b_by_trial]
-
-
-# if hb_trial[0] is negative, meaning barrier is on left, multiply the trial by -1?
-# currently the h_vs_b is on a -180 to 180 scale with 0 as barrier directly in front, negatives on the left.
-# abs does do the trick of seeing if the absolute angle grows, but misses crossings (i.e. -60 to 80 would be the same as -60 to -80, which is a
-# much lower amplitude turn. TRY:
 
         if trialfilter != ():
             trialfilter = trialfilter[0]
@@ -542,10 +535,9 @@ class Escapes:
         else:
             h_vs_b_by_trial = self.h_vs_b_starting_zero_by_trial
             
-        h_vs_b_mod = [np.array(hb_trial) if hb_trial[0] > 0 else -1*np.array(
+        h_vs_b_mod = [np.array(hb_trial) if hb_trial[self.timerange[0]] > 0 else -1*np.array(
             hb_trial) for hb_trial in h_vs_b_by_trial]
-        
-#        h_vs_b_mod = [np.abs(hb_trial) for hb_trial in self.h_vs_b_by_trial]
+
         if plot_fish:
  #           fig, ax = pl.subplots(1, 1)
 #            tsplot(h_vs_b_mod, ax)
@@ -554,6 +546,12 @@ class Escapes:
         else:
             return h_vs_b_mod
 
+
+    # grabs xy coords from tapresponse.txt files. filters them for
+    # errors and assigns missed inds starting from 0 in the 2000 frame records
+    # so that vids dont analyze missed inds.
+    
+        
     def load_experiment(self):
         self.get_xy_coords()
         self.load_barrier_info()
@@ -735,6 +733,10 @@ class Escapes:
             return candidate_backgrounds[0][0]
                                 
     def get_orientation(self, makevid):
+
+
+        # these are the thresholded videos. these only have timeframe frames. 
+        
         for trial, (vid_file, xy) in enumerate(
                 zip(self.movie_id, self.xy_coords_by_trial)):
             if xy[0] == []:
@@ -760,6 +762,10 @@ class Escapes:
             ycoords = xy[1][0:self.timerange[1]]
             missed_inds_trial = self.missed_inds_by_trial[trial]
     # the arrays are indexed in reverse from how you'd like to plot.
+    
+    # frame is now indexing from the front of the xy file.
+    # ha vid and threshvid are from 100 on. 
+    
             for frame, (x, y) in enumerate(zip(xcoords, ycoords)):
                 y = 1024 - y
 #                im_color = vid.get_data(self.timerange[0] + frame)
@@ -1009,6 +1015,7 @@ class Escapes:
                 self.cstart_angles.append(np.nan)
                 self.escape_latencies.append(np.nan)
                 self.pre_escape_bouts.append([])
+                self.cstarts_per_trial.append(0)
                 continue
             tail_kern = Gaussian1DKernel(self.cstart_filter_std)
             stim_init = self.stim_init_times[trial]
@@ -1467,7 +1474,7 @@ def outlier_filter(xcoords, ycoords, missed_inds):
         vmag = magvector(diff_vec)
         if i == len(xcoords) - 1:
             return new_x, new_y, missed_inds
-        elif vmag < 100:
+        elif vmag < 50:
             new_x.append(crds[0])
             new_y.append(crds[1])
         else:
@@ -1480,6 +1487,8 @@ def outlier_filter(xcoords, ycoords, missed_inds):
                 return outlier_filter(xcoords, ycoords, missed_inds)
             except RuntimeError:
                 return [], [], []
+    if len(missed_inds) > 10:
+        return [], [], []
     return new_x, new_y, missed_inds
 
 
@@ -2369,7 +2378,7 @@ def experiment_collector(drct_list, cond_list, filter_settings, *new_exps):
         pl.ioff()
 
         # CHANGE THIS TO ALTER THE MINIMUM AREA THE FISH TAKES UP BEFORE BEING
-        # CALLED A FISH. 
+        # CALLED A FISH. 47 seems perfect. 
         
         area_thresh = 47
 #        esc_dir = os.getcwd() + fish_id
@@ -2554,42 +2563,38 @@ if __name__ == '__main__':
     visfunc = lambda x: (-180 + viswin < x < -viswin) or (
         viswin < x < 180-viswin)
 
-#    ecs_virtual = experiment_collector(virtual, ['v', 'i', 'n'], [0, lambda x: True, 1])
+   # ecs_virtual = experiment_collector(virtual, ['v', 'i', 'n'], [0, visfunc, 1])
     
     ec_fourb = experiment_collector(four_b, ['l', 'd', 'n'],
-                                    [0, visfunc, 1], four_b)
+                                    [0, visfunc, 1])
 
     plot_all_results(ec_fourb)
 
-    hm = hairplot_heatmap2(ec_fourb[2])
+    hm = hairplot_heatmap2(ec_fourb[0])
+    hm = hairplot_heatmap2(ec_fourb[1])
     hairplot_collisionmap(ec_fourb[0], ec_fourb[1])
-  #  ax_dark = hairplot_collisionmap(ec_fourb[0], ec_fourb[1])
- #   ax_light = hairplot_collisionmap(ec_fourb, 0, 9)
-#    ax_virtual = hairplot_collisionmap(ecs_virtual, 0, 6)
 
-    # use barrier on the left for light and dark. then use 2d histograms close in
-    # for N trials, L Trials and D trials. Show the heading to barrier plot and
-    # make sure it is correct. Say because we saw a significant difference in approach angle, we
-    # wondered whether the correct trajectory rate held across retinal occupancies. It didn't.
-    # We used the 20 window. Show heatplots for all of these. 
+    #     # use barrier on the left for light and dark. then use 2d histograms close in
+#     # for N trials, L Trials and D trials. Show the heading to barrier plot and
+#     # make sure it is correct. Say because we saw a significant difference in approach angle, we
+#     # wondered whether the correct trajectory rate held across retinal occupancies. It didn't.
+#     # We used the 20 window. Show heatplots for all of these. 
 
     white_and_virtual_list = [four_w, virtual, virtual]
     red_b_list = [four_b, red24mm_4mmdist, red12mm_4mmdist_2h, red12mm_4mmdist, red48mm_8mmdist_2h, red48mm_8mmdist]
-  #  collision_stats, num_n_trials = infer_collisions(red_b_list+white_and_virtual_list, False, viswin)
- #   plot_collision_stat(collision_stats, num_n_trials)
+#     fishlist = red_b_list + four_w
+#   #  collision_stats, num_n_trials = infer_collisions(red_b_list+white_and_virtual_list, False, viswin)
+#  #   plot_collision_stat(collision_stats, num_n_trials)
     
         
     ec_fourw = experiment_collector(four_w, ['l', 'n'],
-                                    [0, visfunc, 1])
+                                     [0, visfunc, 1])
     
     coordmat_l, coordmat_l = hairplot_heatmap(ec_fourw, 0)
     plot_all_results(ec_fourw)
 
-# used to test stim and cstart detection -- perfect! 
-#    four_b_1 = ['022619_2', '030519_1']
-
-    coordmat_l, coordmat_l = hairplot_heatmap(ec_fourb, 1)
-    plot_all_results(ec_fourb)
+# # used to test stim and cstart detection -- perfect! 
+# #    four_b_1 = ['022619_2', '030519_1']
 
     red24mm_4mmdist_ec = experiment_collector(red24mm_4mmdist, ['l', 'n'],
                                               [0, visfunc, 1])
@@ -2618,9 +2623,7 @@ if __name__ == '__main__':
                                       [0, visfunc, 0])
     pairwise_l_to_n_PI(mauth_l_ec, mauth_r_ec)
  
-#     fishlist = [four_b, red24mm_4mmdist, red12mm_4mmdist_2h, red12mm_4mmdist,
-#                 red48mm_8mmdist_2h, red48mm_8mmdist, four_w]
-
+#    
 
 #     collect_collision_stat(fishlist, 'l', np.ones(len(fishlist)), [0, visfunc, 1])
    
@@ -2674,16 +2677,38 @@ if __name__ == '__main__':
  
 #  #    collect_collision_stat([four_b], 'l', np.ones(len([four_b])), [0, [], 1])
 
-# """ END PLOTS FOR PAPER """
+# """ END PLOTS FOR PAPER UNCOMMENT BELOW TO RUN FULL ANALYSIS AGAIN """ 
+   
 
+    # four_b_ec = experiment_collector(
+    #     four_b, ['l','d','n'], [0, lambda x: True, 1], four_b)
 
-""" FOR RUNNING FULL ANALYSIS ON ALL DATA """ 
+    # four_w_ec = experiment_collector(
+    #     four_w, ['l','d','n'], [0, lambda x: True, 1], four_w)
 
-    # ecs_bar = [experiment_collector(fish, ['l', 'd', 'n'], [0, lambda x: True, 1], fish) for fish in fishlist]
-    # ecs_virtual = [experiment_collector(fish, ['v', 'i', 'n'], [0, lambda x: True, 1], fish) for fish in [virtual]]
-    # ecs_mauth = [experiment_collector(fish, ['l', 'n'], [0, lambda x: True, 0], fish) for fish in [wik_mauthner_l, wik_mauthner_r]]
+    # plot_all_results(four_w_ec)
 
+    # red24mm_4mmdist_ec = experiment_collector(
+    #     red24mm_4mmdist, ['l','d','n'], [0, lambda x: True, 1], red24mm_4mmdist)
 
+    # plot_all_results(red24mm_4mmdist_ec)
+
+    # red12mm_4mmdist_ec = experiment_collector(
+    #     red12mm_4mmdist, ['l','d','n'], [0, lambda x: True, 1], red12mm_4mmdist)
+
+    # red12mm_4mmdist_2h_ec = experiment_collector(
+    #     red12mm_4mmdist_2h, ['l','d','n'], [0, lambda x: True, 1], red12mm_4mmdist_2h)
+
+    # red48mm_8mmdist_2h_ec = experiment_collector(
+    #     red48mm_8mmdist_2h, ['l','d','n'], [0, lambda x: True, 1], red48mm_8mmdist_2h)
+
+    # red48mm_8mmdist_ec = experiment_collector(
+    #     red48mm_8mmdist, ['l','d','n'], [0, lambda x: True, 1], red48mm_8mmdist)
+    
+    # virtual_ec = experiment_collector(virtual, ['v', 'i', 'n'], [0, lambda x: True, 1], virtual)
+
+    # mauth_l_ec = experiment_collector(wik_mauthner_l, ['l', 'n'], [0, lambda x: True, 0], wik_mauthner_l)
+    # mauth_r_ec = experiment_collector(wik_mauthner_r, ['l', 'n'], [0, lambda x: True, 0], wik_mauthner_r)
 
 # # navigation plot. make sure you understand exactly what the stat is.
 # # current thought is "No. Visits" (in legend say filtered w 2D gaussian).
