@@ -29,6 +29,8 @@ def proximity_calculator(nav_list, condition, b_color, *value_range):
         coords_wrt_barrier += nav_object.coords_wrt_closest_barrier
         nav_object_collection.append(nav_object)
 
+
+
     coords_wrt_barrier = np.array(coords_wrt_barrier)
     xmax = np.nanmax(coords_wrt_barrier[:, 0])
     xmin = np.nanmin(coords_wrt_barrier[:, 0])
@@ -76,39 +78,39 @@ def proximity_calculator(nav_list, condition, b_color, *value_range):
 def proximity_histogram(nav_list, condition, b_color, *norm_max):
     coords_wrt_barrier = []
     nav_object_collection = []
+    bound = 200
+    barrier_location = [0, 0]
+    n_bins = 30
+    barrier_prox_stats = []
     for nl_item in nav_list:
         nav_directory = '/Volumes/Esc_and_2P/Escape_Results/' + nl_item
         nav_object = Navigator(condition, nav_directory)
         nav_object.norm_coords_to_barrier()
         coords_wrt_barrier += nav_object.coords_wrt_closest_barrier
         nav_object_collection.append(nav_object)
+        density = np.histogram2d(np.array(nav_object.coords_wrt_closest_barrier)[:, 0],
+                                 np.array(nav_object.coords_wrt_closest_barrier)[:, 1],
+                                 range=[[-bound, bound], [-bound, bound]])[0]
+        dim = density.shape[0]
+        barrier_prox_stat = np.sum(density[int(dim/2) - int(dim / 5):int(dim/2) + int(dim/5), int(dim/2) - int(dim / 5):
+                                       int(dim/2) + int(dim/5)]) / np.sum(density)
+        barrier_prox_stats.append(barrier_prox_stat)
 
     # here do the proximity calculation below. do it on a binsize basis per fish.
     # make a bar graph for it next to the plots
         
-
     coords_wrt_barrier = np.array(coords_wrt_barrier)
-
-    bound = 200
-    barrier_location = [0,0]
-    
-    
-    # xmax = scale_factor
-    # xmin = -1*scale_factor
-    # ymax = scale_factor
-    # ymin = -1*scale_factor
-
     fig = pl.figure()
     ax = fig.add_subplot(111)
-    cmap = 'hot'
+    cmap = 'inferno'
 
     if norm_max != ():
         norm=colors.Normalize(0, norm_max[0])
         hm = ax.hist2d(coords_wrt_barrier[:, 0], coords_wrt_barrier[:, 1], range=[[-bound, bound], [-bound, bound]],
-                       bins=30, cmap=cmap, density=False, norm=norm)
+                       bins=n_bins, cmap=cmap, density=False, norm=norm)
     else:
         hm = ax.hist2d(coords_wrt_barrier[:, 0], coords_wrt_barrier[:, 1], range=[[-bound, bound], [-bound, bound]],
-                       bins=30, cmap=cmap, density=False)
+                       bins=n_bins, cmap=cmap, density=False)
     
 
         
@@ -120,7 +122,7 @@ def proximity_histogram(nav_list, condition, b_color, *norm_max):
     ax.set_aspect('equal')
     fig.colorbar(hm[3], ax=ax)
     pl.show()
-    return nav_object_collection, hm[0]
+    return nav_object_collection, hm[0], barrier_prox_stats
 
 
 class Navigator:
@@ -529,7 +531,7 @@ def midpoint_proximity(crossings, bloc, bdiams, lines):
 
 
 exp_type = 'b'
-#directories = ['052319_2', '052419_5', '052319_6']
+
 red_b = ['061419_1', '061419_2', '061419_3',
          '061419_4', '061419_5', '061819_1']
 
@@ -551,22 +553,11 @@ blackandred_b = ["061219_2", "061219_3", "061219_4",
 #navs_red = proximity_calculator(red_b, exp_type, [1, 0, 0], navs_white[1])
 
 
-navs_white, density_w = proximity_histogram(white_b, exp_type, [1, 1, 1])
-navs_red, density_r = proximity_histogram(red_b, exp_type, [1, 0, 0], np.max(density_w))
-
-# # bins div 5 takes you next to barrier.
-
-dim = density_w.shape[0]
-
-barrier_prox_stat_w = np.sum(density_w[int(dim/2) - int(dim / 5):int(dim/2) + int(dim/5), int(dim/2) - int(dim / 5):
-                                       int(dim/2) + int(dim/5)]) / np.sum(density_w)
-
-barrier_prox_stat_r = np.sum(density_r[int(dim/2) - int(dim / 5):int(dim/2) + int(dim/5), int(dim/2) - int(dim / 5):
-                                     int(dim/2) + int(dim/5)]) / np.sum(density_r)
-
-
-
-
+navs_white, density_w, bprox_w = proximity_histogram(white_b, exp_type, [1, 1, 1])
+navs_red, density_r, bprox_r = proximity_histogram(red_b, exp_type, [1, 0, 0], np.max(density_w))
+xs = np.zeros(len(bprox_w)).tolist() + np.ones(len(bprox_r)).tolist()
+sb.barplot(xs, bprox_w + bprox_r, color='gray')
+ttest_results = scipy.stats.ttest_ind(bprox_w, bprox_r)
 
 #navs_big = proximity_calculator(red_2xheight_4xwide, exp_type, [1, 0, 0])  #, navs_white[1])
 

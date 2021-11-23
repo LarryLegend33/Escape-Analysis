@@ -1405,11 +1405,12 @@ def make_segments(x, y):
 
 def colorline(x,
               y,
+              ax,
               z=None,
-              cmap=pl.get_cmap('afmhot'),
+              cmap=pl.get_cmap('hot'),
               norm=pl.Normalize(0.0, 1.0),
-              linewidth=3,
-              alpha=1.0):
+              linewidth=1.2,
+              alpha=.7):
     '''
     Plot a colored line with coordinates x and y
     Optionally specify colors in the array z
@@ -1431,7 +1432,6 @@ def colorline(x,
         norm=norm,
         linewidth=linewidth,
         alpha=alpha)
-    ax = pl.gca()
     ax.add_collection(lc)
     return lc
 
@@ -1888,7 +1888,7 @@ def hairplot_heatmap(ec_list, *combine_maps):
     startleave = 2
     interpolate_by = 1000
 #    cmap = sb.color_palette('Reds', as_cmap=True)
-    cmap = 'hot'
+    cmap = 'inferno'
     bleft_matrix = np.zeros([hm_bins_x, hm_bins_y])
     bright_matrix = np.zeros([hm_bins_x, hm_bins_y])
 
@@ -1967,6 +1967,7 @@ def combined_hairplot(ec_list):
             ax[1, 0].plot(bl_coords[0],
                        bl_coords[1], color='k',
                        linewidth=linewidth, alpha=line_alpha/2)
+        
 
         for br_coords in ec_data['Barrier On Right Trajectories']:
             ax[0, 1].plot(br_coords[0],
@@ -1975,32 +1976,50 @@ def combined_hairplot(ec_list):
             ax[1, 0].plot(br_coords[0],
                        br_coords[1], color='k',
                        linewidth=linewidth, alpha=line_alpha/2)
+#            colorline(-br_coords[0], br_coords[1], ax[1,1])
 
+    all_trajectories = np.concatenate([
+        [[b[0][10:], b[1][10:]] for b in ec_data['Barrier On Left Trajectories']],
+        [[-b[0][10:], b[1][10:]] for b in ec_data['Barrier On Right Trajectories']]])
+    all_traj = sorted(
+        all_trajectories,
+        key=lambda x: magvector([np.mean(x[0][-10:]), np.mean(x[1][-10:])]),
+        reverse=True)
+    [colorline(b[0], b[1], ax[1,1]) for b in all_traj]
     ax[0, 0].set_xlim([-bound, bound])
     ax[0, 0].set_ylim([-bound, bound])
     ax[1, 0].set_xlim([-bound, bound])
     ax[1, 0].set_ylim([-bound, bound])
     ax[0, 1].set_xlim([-bound, bound])
     ax[0, 1].set_ylim([-bound, bound])
+    ax[1, 1].set_xlim([-bound, bound])
+    ax[1, 1].set_ylim([-bound, bound])
+
     ax[0, 0].set_aspect('equal')
     ax[1, 0].set_aspect('equal')
     ax[0, 1].set_aspect('equal')
+    ax[1, 1].set_aspect('equal')
     ax[0, 0].vlines(0, -bound/2, bound/2,
                  colors='lightgray', linestyles='dashed')
     ax[1, 0].vlines(0, -bound/2, bound/2,
                  colors='lightgray', linestyles='dashed')
     ax[0, 1].vlines(0, -bound/2, bound/2,
                  colors='lightgray', linestyles='dashed')
+    ax[0, 1].vlines(0, -bound/2, bound/2,
+                 colors='lightgray', linestyles='dashed')
+    ax[1,1].set_facecolor('k')
+
+    sb.despine()
+    pl.tight_layout()
+    pl.show()
     total_fish = np.sum([len(x) for x in left_turn_percentage])
     print("Total Fish")
     print(total_fish)
 
-#    sb.kdeplot(np.concatenate(left_turn_percentage), clip=[0, 1], ax=ax[1, 1], color='pink')
-    sb.distplot(np.concatenate(left_turn_percentage), ax=ax[1, 1], color='pink', bins=9)
-    sb.despine()
-    pl.tight_layout()
-    pl.show()
-    
+   # fig2, ax2 = pl.subplots(1, 1)
+#    sb.kdeplot(np.concatenate(left_turn_percentage), clip=[0, 1], ax=ax2, color='pink')
+   # sb.distplot(np.concatenate(left_turn_percentage), ax=ax2, color='pink', bins=9)
+  #  pl.show()
             
             
 # precondition the ec_light and dark for left or right only 
@@ -2408,12 +2427,16 @@ def correct_traj_by_visual_window(fishlist, div, mapfunc, condition):
     for win in range(0, 180, div):
         ec = experiment_collector(fishlist, [condition],
                                   [0, lambda x: (-win-div < x < -win) or (win < x < win + div), 1])
-        correct_traj_percentage.append(ec[0].escape_data['Correct Trajectory Percentage'])
+        if np.sum([not math.isnan(x) for x in ec[0].escape_data['Correct Trajectory Percentage']]) > 1:
+               correct_traj_percentage.append(ec[0].escape_data['Correct Trajectory Percentage'])
+        else:
+               correct_traj_percentage.append([])
     xvals = []
     for i, d in enumerate(correct_traj_percentage):
-        xvals.append(i*np.ones(len(d)))
+        if i <= 6:
+            xvals.append(i*np.ones(len(d)))
     xv_concat = np.concatenate(xvals)
-    yvals = list(map(mapfunc, np.concatenate(correct_traj_percentage)))
+    yvals = list(map(mapfunc, np.concatenate(correct_traj_percentage[0:7])))
    # sb.pointplot(x=xv_concat, y=yvals, color='gray', markers='s')
 #    sb.stripplot(x=xv_concat, y=yvals, dodge=False, alpha=.2, zorder=0, jitter=.005, color='dodgerblue')
     sb.lineplot(x=xv_concat, y=yvals, color='gray', markers='s')
@@ -2533,10 +2556,10 @@ if __name__ == '__main__':
 
     hm = hairplot_heatmap([ec_fourb[0]])
     hm = hairplot_heatmap([ec_fourb[1]])
-    hm = hairplot_heatmap([ec_fourw[0]])
-    hairplot_collisionmap(ec_fourb[0], ec_fourb[1])
+  #  hm = hairplot_heatmap([ec_fourw[0]])
+   # hairplot_collisionmap(ec_fourb[0], ec_fourb[1])
 
-
+  #  correct_traj_by_visual_window(four_b, 15, lambda x: 2*x - 1, 'l')
 
     
     #     # use barrier on the left for light and dark. then use 2d histograms close in
@@ -2545,16 +2568,16 @@ if __name__ == '__main__':
 #     # wondered whether the correct trajectory rate held across retinal occupancies. It didn't.
 #     # We used the 20 window. Show heatplots for all of these. 
 
-    white_and_virtual_list = [four_w, virtual, virtual]
-    red_b_list = [four_b, red24mm_4mmdist, red12mm_4mmdist_2h, red12mm_4mmdist, red48mm_8mmdist_2h, red48mm_8mmdist]
-    all_n_coords, all_n_ec = get_n_trajectories(red_b_list + white_and_virtual_list)
-    combined_hairplot(all_n_ec)
-    hairplot_heatmap(all_n_ec, 1)
+  #  white_and_virtual_list = [four_w, virtual, virtual]
+  #  red_b_list = [four_b, red24mm_4mmdist, red12mm_4mmdist_2h, red12mm_4mmdist, red48mm_8mmdist_2h, red48mm_8mmdist]
+  #  all_n_coords, all_n_ec = get_n_trajectories(red_b_list + white_and_virtual_list)
+    combined_hairplot([ec_fourb[0]])
+  #  hairplot_heatmap(all_n_ec, 1)
 
     
 # #     fishlist = red_b_list + four_w
-#    collision_stats, num_n_trials = infer_collisions(red_b_list, False, viswin)
- #   plot_collision_stat(collision_stats, num_n_trials)
+  #  collision_stats, num_n_trials = infer_collisions(red_b_list+white_and_virtual_list, False, viswin)
+  #  plot_collision_stat(collision_stats, num_n_trials)
     
         
     
@@ -2585,7 +2608,7 @@ if __name__ == '__main__':
 #                                               ['l', 'n'], [0, visfunc, 1])
 #     plot_all_results(red48mm_8mmdist_ec)
 
-#     mauth_l_ec = experiment_collector(wik_mauthner_l, ['l', 'n'],
+ #    mauth_l_ec = experiment_collector(wik_mauthner_l, ['l', 'n'],
 #                                       [0, visfunc, 0])
 #     mauth_r_ec = experiment_collector(wik_mauthner_r, ['l', 'n'],
 #                                       [0, visfunc, 0])
