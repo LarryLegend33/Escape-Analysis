@@ -1571,15 +1571,17 @@ def collect_collision_stat(fishlist, cond, height_multiplier, filt):
 def get_n_trajectories(fish_experiment_list):
     all_n_x = []
     all_n_y = []
+    all_n_ec = []
     for drct_list in fish_experiment_list:
-        ec = experiment_collector(drct_list, ['n'], [0, [], 1])
+        ec = experiment_collector(drct_list, ['n'], [0, lambda x: True, 1])
+        all_n_ec.append(ec[0])
         for fish in ec:
             all_traj = fish.escape_data[
                 "Barrier On Left Trajectories"] + fish.escape_data[
                     "Barrier On Right Trajectories"]
             all_n_x += [tx[0] for tx in all_traj]
             all_n_y += [ty[1] for ty in all_traj]
-    return [all_n_x, all_n_y]
+    return [all_n_x, all_n_y], all_n_ec
         
 
 def plot_collision_stat(all_collisions, num_n_trials):
@@ -1597,7 +1599,7 @@ def plot_collision_stat(all_collisions, num_n_trials):
     
 
 def infer_collisions(fish_experiment_list, plotornot, exclude_win):
-    all_n_trajectories = get_n_trajectories(fish_experiment_list)
+    all_n_trajectories, n_ec = get_n_trajectories(fish_experiment_list)
     x_escape_n, y_escape_n = all_n_trajectories
     print(len(x_escape_n))
     collisions_across_all_conditions = []
@@ -1615,7 +1617,11 @@ def infer_collisions(fish_experiment_list, plotornot, exclude_win):
                 continue
 
             for trial, xy in enumerate(esc_obj.xy_coords_by_trial):
-                angle, mag = esc_obj.initial_conditions[trial][0:2]
+                try:
+                    angle, mag = esc_obj.initial_conditions[trial][0:2]
+                except ValueError:
+                    print("Empty Initial Conditions")
+                    continue
                 if np.abs(np.degrees(angle)) < exclude_win or np.abs(np.degrees(angle)) > 180 - exclude_win:
                     continue
                 mag += (esc_obj.barrier_diam / 2)
@@ -1871,8 +1877,7 @@ def pairwise_l_to_n_PI(ec_left, ec_right):
 
 
 # ONCE THEYVE LEFT THEIR START POSITION!! 
-def hairplot_heatmap2(ec):
-    ec_data = ec.convert_to_nparrays()
+def hairplot_heatmap(ec_list, *combine_maps):
     xbound = 25
     ybound = 15
     hm_bins_x = 15
@@ -1886,38 +1891,44 @@ def hairplot_heatmap2(ec):
     cmap = 'hot'
     bleft_matrix = np.zeros([hm_bins_x, hm_bins_y])
     bright_matrix = np.zeros([hm_bins_x, hm_bins_y])
-    
-    for bl_coords in ec_data['Barrier On Left Trajectories']:
-        traj_coords_bleft = []
-        int_len = len(bl_coords[0][traj_begin:])
-        interp_x = np.interp(np.linspace(0, int_len, interpolate_by), range(int_len), bl_coords[0][traj_begin:traj_end])
-        interp_y = np.interp(np.linspace(0, int_len, interpolate_by), range(int_len), bl_coords[1][traj_begin:traj_end])
-        for blx, bly in zip(interp_x, interp_y):
-            if (np.abs(blx) > startleave * (xbound / hm_bins_x)) or (
-                    np.abs(bly) > startleave * (ybound / hm_bins_y)):
-                traj_coords_bleft.append([blx, bly])
-        hm = np.histogram2d([x[0] for x in traj_coords_bleft],
-                            [y[1] for y in traj_coords_bleft],
-                            range = [[-xbound, xbound], [-ybound, ybound]],
-                            bins=[hm_bins_x, hm_bins_y], density=False)
-        bins_visited = (hm[0] != 0).astype(np.int)
-        bleft_matrix += bins_visited
 
-    for br_coords in ec_data['Barrier On Right Trajectories']:
-        traj_coords_bright = []
-        int_len = len(br_coords[0][traj_begin:])
-        interp_x = np.interp(np.linspace(0, int_len, interpolate_by), range(int_len), br_coords[0][traj_begin:traj_end])
-        interp_y = np.interp(np.linspace(0, int_len, interpolate_by), range(int_len), br_coords[1][traj_begin:traj_end])
-        for brx, bry in zip(interp_x, interp_y):
-            if (np.abs(brx) > startleave * (xbound / hm_bins_x)) or (
-                    np.abs(bry) > startleave * (ybound / hm_bins_y)):
-                traj_coords_bright.append([brx, bry])
-        hm = np.histogram2d([x[0] for x in traj_coords_bright],
-                            [y[1] for y in traj_coords_bright],
-                            range = [[-xbound, xbound], [-ybound, ybound]],
-                            bins=[hm_bins_x, hm_bins_y], density=False)
-        bins_visited = (hm[0] != 0).astype(np.int)
-        bright_matrix += bins_visited
+    for ec in ec_list:
+        ec_data = ec.convert_to_nparrays()
+        for bl_coords in ec_data['Barrier On Left Trajectories']:
+            traj_coords_bleft = []
+            int_len = len(bl_coords[0][traj_begin:])
+            interp_x = np.interp(np.linspace(0, int_len, interpolate_by),
+                                 range(int_len), bl_coords[0][traj_begin:traj_end])
+            interp_y = np.interp(np.linspace(0, int_len, interpolate_by),
+                                 range(int_len), bl_coords[1][traj_begin:traj_end])
+            for blx, bly in zip(interp_x, interp_y):
+                if (np.abs(blx) > startleave * (xbound / hm_bins_x)) or (
+                        np.abs(bly) > startleave * (ybound / hm_bins_y)):
+                    traj_coords_bleft.append([blx, bly])
+            hm = np.histogram2d([x[0] for x in traj_coords_bleft],
+                                [y[1] for y in traj_coords_bleft],
+                                range = [[-xbound, xbound], [-ybound, ybound]],
+                                bins=[hm_bins_x, hm_bins_y], density=False)
+            bins_visited = (hm[0] != 0).astype(np.int)
+            bleft_matrix += bins_visited
+
+        for br_coords in ec_data['Barrier On Right Trajectories']:
+            traj_coords_bright = []
+            int_len = len(br_coords[0][traj_begin:])
+            interp_x = np.interp(np.linspace(0, int_len, interpolate_by),
+                                 range(int_len), br_coords[0][traj_begin:traj_end])
+            interp_y = np.interp(np.linspace(0, int_len, interpolate_by),
+                                 range(int_len), br_coords[1][traj_begin:traj_end])
+            for brx, bry in zip(interp_x, interp_y):
+                if (np.abs(brx) > startleave * (xbound / hm_bins_x)) or (
+                        np.abs(bry) > startleave * (ybound / hm_bins_y)):
+                    traj_coords_bright.append([brx, bry])
+            hm = np.histogram2d([x[0] for x in traj_coords_bright],
+                                [y[1] for y in traj_coords_bright],
+                                range = [[-xbound, xbound], [-ybound, ybound]],
+                                bins=[hm_bins_x, hm_bins_y], density=False)
+            bins_visited = (hm[0] != 0).astype(np.int)
+            bright_matrix += bins_visited
 
         
     fig, ax = pl.subplots(1, 2)
@@ -1928,41 +1939,69 @@ def hairplot_heatmap2(ec):
 #    fig.colorbar(cmap, ax=ax[0])
     pl.show()
 
-                
-    # for br_coords in ec_data['Barrier On Right Trajectories']:
-    #     for brx, bry in zip(br_coords[0][traj_begin:], br_coords[1][traj_begin:]):
-    #         if np.abs(brx) > startleave * (xbound / hm_bins_x) or np.abs(bry) > startleave * (ybound / hm_bins_y):
-    #             all_traj_coords_bright.append([brx, bry])
+    if combine_maps != ():
+        
+        fig, ax = pl.subplots(1, 1)
+        combined_mat = bleft_matrix + bright_matrix
+        ax.pcolormesh(hm[1], hm[2], combined_mat.T / np.max(combined_mat), cmap=cmap)
+        ax.set_aspect('equal')
+        pl.show()
+        
+    return hm
 
 
+def combined_hairplot(ec_list):
+    fig, ax = pl.subplots(2, 2)
+    bound = 100
+    line_alpha = .1
+    linewidth = .7
+    left_turn_percentage = []
+    for ec in ec_list:
+        ec_data = ec.convert_to_nparrays()
+        print(ec_data['Left Traj Percentage'])
+        left_turn_percentage.append(ec_data['Left Traj Percentage'])
+        for bl_coords in ec_data['Barrier On Left Trajectories']:
+            ax[0, 0].plot(bl_coords[0],
+                       bl_coords[1], color='k',
+                       linewidth=linewidth, alpha=line_alpha)
+            ax[1, 0].plot(bl_coords[0],
+                       bl_coords[1], color='k',
+                       linewidth=linewidth, alpha=line_alpha/2)
 
-    # hm = np.histogram2d([x[0] for x in all_traj_coords_bleft],
-    #                     [y[1] for y in all_traj_coords_bleft],
-    #                     range=[[-xbound, xbound], [-ybound, ybound]],
-    #                     bins=[hm_bins_x, hm_bins_y], density=False)
+        for br_coords in ec_data['Barrier On Right Trajectories']:
+            ax[0, 1].plot(br_coords[0],
+                       br_coords[1], color='k',
+                       linewidth=linewidth, alpha=line_alpha)
+            ax[1, 0].plot(br_coords[0],
+                       br_coords[1], color='k',
+                       linewidth=linewidth, alpha=line_alpha/2)
 
+    ax[0, 0].set_xlim([-bound, bound])
+    ax[0, 0].set_ylim([-bound, bound])
+    ax[1, 0].set_xlim([-bound, bound])
+    ax[1, 0].set_ylim([-bound, bound])
+    ax[0, 1].set_xlim([-bound, bound])
+    ax[0, 1].set_ylim([-bound, bound])
+    ax[0, 0].set_aspect('equal')
+    ax[1, 0].set_aspect('equal')
+    ax[0, 1].set_aspect('equal')
+    ax[0, 0].vlines(0, -bound/2, bound/2,
+                 colors='lightgray', linestyles='dashed')
+    ax[1, 0].vlines(0, -bound/2, bound/2,
+                 colors='lightgray', linestyles='dashed')
+    ax[0, 1].vlines(0, -bound/2, bound/2,
+                 colors='lightgray', linestyles='dashed')
+    total_fish = np.sum([len(x) for x in left_turn_percentage])
+    print("Total Fish")
+    print(total_fish)
+
+#    sb.kdeplot(np.concatenate(left_turn_percentage), clip=[0, 1], ax=ax[1, 1], color='pink')
+    sb.distplot(np.concatenate(left_turn_percentage), ax=ax[1, 1], color='pink', bins=9)
+    sb.despine()
+    pl.tight_layout()
+    pl.show()
     
-    # hm_left = ax[0].hist2d([x[0] for x in all_traj_coords_bleft],
-    #                        [y[1] for y in all_traj_coords_bleft],
-    #                        range=[[-xbound, xbound], [-ybound, ybound]],
-    #                        bins=[hm_bins_x, hm_bins_y], density=False, alpha=hm_alpha,
-    #                        cmap=cmap)
-    
-    # hm_right = ax[1].hist2d([x[0] for x in all_traj_coords_bright],
-    #                         [y[1] for y in all_traj_coords_bright],
-    #                         range=[[-xbound, xbound], [-ybound, ybound]],
-    #                         bins=[hm_bins_x, hm_bins_y], density=False, alpha=hm_alpha,
-    #                         cmap=cmap)
-
-    # pl.imshow a np.histogram2d -> use extent to get the right xy location. 
-    
-    # ax[0].set_aspect('equal')
-    # ax[1].set_aspect('equal')
-  #  fig.colorbar(, ax=ax[0])
-#    fig.colorbar(hm_right[3], ax=ax[1])
-    return hm 
-
-
+            
             
 # precondition the ec_light and dark for left or right only 
 def hairplot_collisionmap(ec_light, ec_dark):
@@ -2026,100 +2065,20 @@ def hairplot_collisionmap(ec_light, ec_dark):
                                      bins=hm_bins, density=False, alpha=hm_alpha,
                                      cmap=cmap, norm=colors.Normalize(0, np.max(hm_combined_dark[0])))
     
-#    fig.colorbar(hm_combined_dark[3])
-#    fig.colorbar(hm_right[3], ax=ax[1])
- #   fig.colorbar(hm_combined[3], ax=ax[2])
+    fig.colorbar(hm_combined_dark[3], ax=ax[1])
+    fig.colorbar(hm_combined_dark[3], ax=ax[0])
     ax[0].set_xlim([-bound, bound])
     ax[0].set_ylim([-bound, bound])
     ax[0].set_aspect('equal')
     ax[1].set_aspect('equal')
-    sb.despine()
     ax[0].vlines(0, -bound/2, bound/2,
-                   colors='gray', linestyles='dashed')
+                   colors='lightgray', linestyles='dashed')
     ax[1].vlines(0, -bound/2, bound/2,
-                   colors='gray', linestyles='dashed')
+                   colors='lightgray', linestyles='dashed')
+    sb.despine()
     pl.tight_layout()
     pl.show()
     
-
-
-
-
-
-def hairplot_heatmap(ec, ec_index):
-    combined_data = ec[ec_index].convert_to_nparrays()
-    fig, ax = pl.subplots(1, 2)
-    bounds = 100
-    coord_matrix_bleft = np.zeros([bounds*2, bounds*2])
-    coord_matrix_bright = np.zeros([bounds*2, bounds*2])
-    collision_coords_bleft = []
-    collision_coords_bright = []
-    timewin = [10, -1]
- #   ax.set_aspect('equal')
-#        escape_win = [10, 25]
-    for bl_coords, bl_collision in zip(combined_data['Barrier On Left Trajectories'],
-                                       combined_data['Collision Trials BLeft']):
-        bl_coords += bounds
-        bl_coords_unique = list(set(zip(bl_coords[0][timewin[0]:timewin[1]],
-                                        bl_coords[1][timewin[0]:timewin[1]])))
-        for x, y in bl_coords_unique:
-            try:
-                coord_matrix_bleft[-y, x] += 1
-            except IndexError:
-                print(x)
-                print(y)
-                continue
-        if bl_collision != []:
-            collision_coords_bleft.append([bl_coords[0][bl_collision[0]],
-                                           bl_coords[1][bl_collision[0]]])
-         #   ax[0].plot(bl_coords[0],
-          #             bl_coords[1])
-
-                                          
-    for br_coords, br_collision in zip(combined_data['Barrier On Right Trajectories'],
-                                       combined_data['Collision Trials BRight']):
-        br_coords += bounds
-        br_coords_unique = list(set(zip(br_coords[0][timewin[0]:timewin[1]],
-                                        br_coords[1][timewin[0]:timewin[1]])))
-        for x, y in br_coords_unique:
-            try:
-                coord_matrix_bright[-y, x] += 1
-            except IndexError:
-                continue
-        if br_collision != []:
-            collision_coords_bright.append([br_coords[0][br_collision[0]],
-                                            br_coords[1][br_collision[0]]])
-       #     ax[1].plot(br_coords[0],
-        #               br_coords[1])
-            
-                                           
-    ksize = 3
-    clipmin_left = np.ceil(sum(sum(coord_matrix_bleft)) / 2000)
-    clipmax_left = np.ceil(sum(sum(coord_matrix_bleft)) / 100)
-    clipmin_right = np.ceil(sum(sum(coord_matrix_bright)) / 2000)
-    clipmax_right = np.ceil(sum(sum(coord_matrix_bright)) / 100)
-    cpal = [(1.0, 1.0, 1.0), (0, 0, 0)] + sb.color_palette('hot')
-    cmap = sb.color_palette(cpal, as_cmap=True)
-    hm1 = sb.heatmap(np.clip(cv2.boxFilter(coord_matrix_bleft, ddepth=-1, ksize=(ksize, ksize),
-                                     normalize=False), clipmin_left, clipmax_left),
-                     ax=ax[0], cmap=cmap)
-    ax[0].scatter([x[0] for x in collision_coords_bleft],
-                  [y[1] for y in collision_coords_bleft], color='dodgerblue', alpha=.3, s=10)
-    hm2 = sb.heatmap(np.clip(cv2.boxFilter(coord_matrix_bright, ddepth=-1, ksize=(ksize, ksize),
-                                     normalize=False), clipmin_left, clipmax_right),
-                     ax=ax[1], cmap=cmap)
-    ax[1].scatter([x[0] for x in collision_coords_bright],
-                  [y[1] for y in collision_coords_bright], color='dodgerblue', alpha=.3, s=10)
-    ax[0].set_aspect('equal')
-    ax[1].set_aspect('equal')
-    ax[0].vlines(bounds, 0, bounds*2, colors='gray', linestyles='dashed', lw=.5)
-    ax[1].vlines(bounds, 0, bounds*2, colors='gray', linestyles='dashed', lw=.5)
-    hm1.set_facecolor('white')
-    hm2.set_facecolor('white')
-    pl.show()
-    return coord_matrix_bleft, coord_matrix_bright
-
-            
     
         
 def hairplot_w_preferenceindex(fish, cond, led_filter, frontwin, *nocolor):
@@ -2565,15 +2524,21 @@ if __name__ == '__main__':
 
    # ecs_virtual = experiment_collector(virtual, ['v', 'i', 'n'], [0, visfunc, 1])
     
-    ec_fourb = experiment_collector(four_b, ['l', 'd', 'n'],
-                                    [0, visfunc, 1])
+  #  ec_fourb = experiment_collector(four_b, ['l', 'd', 'n'],
+  #                                  [0, visfunc, 1])
 
-    plot_all_results(ec_fourb)
+  #  ec_fourw = experiment_collector(four_w, ['l', 'n'],
+  #                                  [0, visfunc, 1])
+ #   plot_all_results(ec_fourb)
 
-    hm = hairplot_heatmap2(ec_fourb[0])
-    hm = hairplot_heatmap2(ec_fourb[1])
+    hm = hairplot_heatmap([ec_fourb[0]])
+    hm = hairplot_heatmap([ec_fourb[1]])
+    hm = hairplot_heatmap([ec_fourw[0]])
     hairplot_collisionmap(ec_fourb[0], ec_fourb[1])
 
+
+
+    
     #     # use barrier on the left for light and dark. then use 2d histograms close in
 #     # for N trials, L Trials and D trials. Show the heading to barrier plot and
 #     # make sure it is correct. Say because we saw a significant difference in approach angle, we
@@ -2582,76 +2547,79 @@ if __name__ == '__main__':
 
     white_and_virtual_list = [four_w, virtual, virtual]
     red_b_list = [four_b, red24mm_4mmdist, red12mm_4mmdist_2h, red12mm_4mmdist, red48mm_8mmdist_2h, red48mm_8mmdist]
-#     fishlist = red_b_list + four_w
-#   #  collision_stats, num_n_trials = infer_collisions(red_b_list+white_and_virtual_list, False, viswin)
-#  #   plot_collision_stat(collision_stats, num_n_trials)
+    all_n_coords, all_n_ec = get_n_trajectories(red_b_list + white_and_virtual_list)
+    combined_hairplot(all_n_ec)
+    hairplot_heatmap(all_n_ec, 1)
+
+    
+# #     fishlist = red_b_list + four_w
+#    collision_stats, num_n_trials = infer_collisions(red_b_list, False, viswin)
+ #   plot_collision_stat(collision_stats, num_n_trials)
     
         
-    ec_fourw = experiment_collector(four_w, ['l', 'n'],
-                                     [0, visfunc, 1])
     
-    coordmat_l, coordmat_l = hairplot_heatmap(ec_fourw, 0)
-    plot_all_results(ec_fourw)
+#     coordmat_l, coordmat_l = hairplot_heatmap(ec_fourw, 0)
+#     plot_all_results(ec_fourw)
 
-# # used to test stim and cstart detection -- perfect! 
-# #    four_b_1 = ['022619_2', '030519_1']
+# # # used to test stim and cstart detection -- perfect! 
+# # #    four_b_1 = ['022619_2', '030519_1']
 
-    red24mm_4mmdist_ec = experiment_collector(red24mm_4mmdist, ['l', 'n'],
-                                              [0, visfunc, 1])
-    plot_all_results(red24mm_4mmdist_ec)
+#     red24mm_4mmdist_ec = experiment_collector(red24mm_4mmdist, ['l', 'n'],
+#                                               [0, visfunc, 1])
+#     plot_all_results(red24mm_4mmdist_ec)
 
-    red12mm_4mmdist_ec_2h = experiment_collector(red12mm_4mmdist_2h,
-                                                 ['l', 'n'], [0, visfunc, 1])
-    plot_all_results(red12mm_4mmdist_ec_2h)
+#     red12mm_4mmdist_ec_2h = experiment_collector(red12mm_4mmdist_2h,
+#                                                  ['l', 'n'], [0, visfunc, 1])
+#     plot_all_results(red12mm_4mmdist_ec_2h)
 
-    red12mm_4mmdist_ec = experiment_collector(red12mm_4mmdist,
-                                              ['l', 'n'], [0, visfunc, 1])
-    plot_all_results(red12mm_4mmdist_ec)
+#     red12mm_4mmdist_ec = experiment_collector(red12mm_4mmdist,
+#                                               ['l', 'n'], [0, visfunc, 1])
+#     plot_all_results(red12mm_4mmdist_ec)
 
 
-    red48mm_8mmdist_ec_2h = experiment_collector(red48mm_8mmdist_2h,
-                                                 ['l', 'n'], [0, visfunc, 1])
-    plot_all_results(red48mm_8mmdist_ec_2h)
+#     red48mm_8mmdist_ec_2h = experiment_collector(red48mm_8mmdist_2h,
+#                                                  ['l', 'n'], [0, visfunc, 1])
+#     plot_all_results(red48mm_8mmdist_ec_2h)
 
-    red48mm_8mmdist_ec = experiment_collector(red48mm_8mmdist,
-                                              ['l', 'n'], [0, visfunc, 1])
-    plot_all_results(red48mm_8mmdist_ec)
+#     red48mm_8mmdist_ec = experiment_collector(red48mm_8mmdist,
+#                                               ['l', 'n'], [0, visfunc, 1])
+#     plot_all_results(red48mm_8mmdist_ec)
 
-    mauth_l_ec = experiment_collector(wik_mauthner_l, ['l', 'n'],
-                                      [0, visfunc, 0])
-    mauth_r_ec = experiment_collector(wik_mauthner_r, ['l', 'n'],
-                                      [0, visfunc, 0])
-    pairwise_l_to_n_PI(mauth_l_ec, mauth_r_ec)
+#     mauth_l_ec = experiment_collector(wik_mauthner_l, ['l', 'n'],
+#                                       [0, visfunc, 0])
+#     mauth_r_ec = experiment_collector(wik_mauthner_r, ['l', 'n'],
+#                                       [0, visfunc, 0])
+#     pairwise_l_to_n_PI(mauth_l_ec, mauth_r_ec)
  
-#    
+# #    
 
-#     collect_collision_stat(fishlist, 'l', np.ones(len(fishlist)), [0, visfunc, 1])
+# #     collect_collision_stat(fishlist, 'l', np.ones(len(fishlist)), [0, visfunc, 1])
    
-    """ PLOTS FOR PAPER """
+#     """ PLOTS FOR PAPER """
 
     
-    white_and_virtual_bleft = collect_varb_across_ec(white_and_virtual_list, ['l', 'v', 'i'],
-                                                    "Correct Trajectory Percentage BLeft", [0, visfunc, 1])
-    white_and_virtual_bright = collect_varb_across_ec(white_and_virtual_list, ['l', 'v', 'i'],
-                                                     "Correct Trajectory Percentage BRight", [0, visfunc, 1])
-    white_and_virtual_correct = collect_varb_across_ec(white_and_virtual_list, ['l', 'v', 'i'],
-                                                    "Correct Trajectory Percentage", [0, visfunc, 1])
+#     white_and_virtual_bleft = collect_varb_across_ec(white_and_virtual_list, ['l', 'v', 'i'],
+#                                                     "Correct Trajectory Percentage BLeft", [0, visfunc, 1])
+#     white_and_virtual_bright = collect_varb_across_ec(white_and_virtual_list, ['l', 'v', 'i'],
+#                                                      "Correct Trajectory Percentage BRight", [0, visfunc, 1])
+#     white_and_virtual_correct = collect_varb_across_ec(white_and_virtual_list, ['l', 'v', 'i'],
+#                                                     "Correct Trajectory Percentage", [0, visfunc, 1])
 
-    plot_varb_over_ecs([white_and_virtual_bleft, lambda x: (2*x -1)],
-                       [white_and_virtual_bright, lambda x: -1*(2*x - 1)])
+#     plot_varb_over_ecs([white_and_virtual_bleft, lambda x: (2*x -1)],
+#                        [white_and_virtual_bright, lambda x: -1*(2*x - 1)])
 
-    plot_varb_over_ecs([white_and_virtual_correct, lambda x: 2*x -1])
+#     plot_varb_over_ecs([white_and_virtual_correct, lambda x: 2*x -1])
 
-    red_bleft = collect_varb_across_ec(red_b_list, 'l', 'Correct Trajectory Percentage BLeft', [0, visfunc, 1])
+#     red_bleft = collect_varb_across_ec(red_b_list, 'l', 'Correct Trajectory Percentage BLeft', [0, visfunc, 1])
 
-    red_bright = collect_varb_across_ec(red_b_list, 'l', 'Correct Trajectory Percentage BRight', [0, visfunc, 1])
+#     red_bright = collect_varb_across_ec(red_b_list, 'l', 'Correct Trajectory Percentage BRight', [0, visfunc, 1])
 
-    red_correct = collect_varb_across_ec(red_b_list, 'l', 'Correct Trajectory Percentage', [0, visfunc, 1])
+#     red_correct = collect_varb_across_ec(red_b_list, 'l', 'Correct Trajectory Percentage', [0, visfunc, 1])
 
-    plot_varb_over_ecs([red_bleft, lambda x: (2*x -1)],
-                       [red_bright, lambda x: -1*(2*x - 1)])
+#     plot_varb_over_ecs([red_bleft, lambda x: (2*x -1)],
+#                        [red_bright, lambda x: -1*(2*x - 1)])
 
-    plot_varb_over_ecs([red_correct, lambda x: 2*x -1])
+#     plot_varb_over_ecs([red_correct, lambda x: 2*x -1])
 
 
 
@@ -2715,7 +2683,6 @@ if __name__ == '__main__':
 
 
 
-# # whenever i run 061821_6, you get a long list of 10, nan. also 063021_6. where is this from? 
+# Two goals: plot all of the N trials across fish. plot a heatmap2 of all N trials. 
 
-# # Write a function that takes a single condition and blocks off regions of space to see where the
-# # most effective diff is. 
+

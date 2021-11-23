@@ -15,7 +15,8 @@ from matplotlib.cm import ScalarMappable
 from matplotlib.collections import LineCollection
 from matplotlib.colors import ListedColormap, BoundaryNorm
 from matplotlib.image import AxesImage
-from matplotlib.colors import Colormap
+from matplotlib.colors import Colormap, Normalize
+
 
 
 def proximity_calculator(nav_list, condition, b_color, *value_range):
@@ -60,7 +61,7 @@ def proximity_calculator(nav_list, condition, b_color, *value_range):
         min_proxmat = np.min(filt_proxmat[filt_proxmat > 0])
         max_proxmat = np.max(filt_proxmat)
  
-    sb.heatmap(filt_proxmat, center=(max_proxmat - min_proxmat) / 2, cmap='viridis')
+    sb.heatmap(filt_proxmat, center=3* (max_proxmat - min_proxmat)/ 4, cmap='hot')
 #    sb.heatmap(filt_proxmat, center=(max_proxmat - min_proxmat) / 2, cmap='icefire')
 #    sb.heatmap(proximity_matrix)
     bounds = pl.Circle(barrier_location,
@@ -71,6 +72,55 @@ def proximity_calculator(nav_list, condition, b_color, *value_range):
     ax.add_artist(barrier)
     pl.show()
     return nav_object_collection, [min_proxmat, max_proxmat]
+
+def proximity_histogram(nav_list, condition, b_color, *norm_max):
+    coords_wrt_barrier = []
+    nav_object_collection = []
+    for nl_item in nav_list:
+        nav_directory = '/Volumes/Esc_and_2P/Escape_Results/' + nl_item
+        nav_object = Navigator(condition, nav_directory)
+        nav_object.norm_coords_to_barrier()
+        coords_wrt_barrier += nav_object.coords_wrt_closest_barrier
+        nav_object_collection.append(nav_object)
+
+    # here do the proximity calculation below. do it on a binsize basis per fish.
+    # make a bar graph for it next to the plots
+        
+
+    coords_wrt_barrier = np.array(coords_wrt_barrier)
+
+    bound = 200
+    barrier_location = [0,0]
+    
+    
+    # xmax = scale_factor
+    # xmin = -1*scale_factor
+    # ymax = scale_factor
+    # ymin = -1*scale_factor
+
+    fig = pl.figure()
+    ax = fig.add_subplot(111)
+    cmap = 'hot'
+
+    if norm_max != ():
+        norm=colors.Normalize(0, norm_max[0])
+        hm = ax.hist2d(coords_wrt_barrier[:, 0], coords_wrt_barrier[:, 1], range=[[-bound, bound], [-bound, bound]],
+                       bins=30, cmap=cmap, density=False, norm=norm)
+    else:
+        hm = ax.hist2d(coords_wrt_barrier[:, 0], coords_wrt_barrier[:, 1], range=[[-bound, bound], [-bound, bound]],
+                       bins=30, cmap=cmap, density=False)
+    
+
+        
+#    sb.heatmap(filt_proxmat, center=3* (max_proxmat - min_proxmat)/ 4, cmap='hot')
+    barrier = pl.Circle(barrier_location,
+                        nav_object.barrier_diams[0] / 2, ec='None', fc=b_color)
+ #   ax.add_artist(bounds)
+    ax.add_artist(barrier)
+    ax.set_aspect('equal')
+    fig.colorbar(hm[3], ax=ax)
+    pl.show()
+    return nav_object_collection, hm[0]
 
 
 class Navigator:
@@ -127,21 +177,21 @@ class Navigator:
                 vec_to_barrier[np.argmin(vec_mags)])
             
     def plot_xy_experiment(self, facecolors):
-        pcolors = sb.color_palette('viridis')
-        fig = pl.figure()
-#        axes = fig.add_subplot(111, facecolor='.25')
-        axes = fig.add_subplot(111, facecolor=pcolors[0])
-        axes.grid(False)
+        fig, ax = pl.subplots(1, 1)
+        ax.set_facecolor('.7')
+        ax.grid(False)
+        ax.plot(self.xy_coords[:, 0],
+                self.xy_coords[:, 1],
+                color='k', linewidth=.8)
         for br, bd, f in zip(self.barrier_coords, self.barrier_diams, facecolors):
             barrier_x = br[0]
             barrier_y = br[1]
             barrier_diameter = bd
             barrier_plot = pl.Circle((barrier_x, barrier_y),
-                                     barrier_diameter / 2, fc=f)
-            axes.add_artist(barrier_plot)
-        axes.plot(self.xy_coords[:, 0], self.xy_coords[:, 1], linewidth=1.0,
-                  color=pcolors[3])
-        axes.axis('equal')
+                                     barrier_diameter / 2, fc=f, ec=f)
+            ax.add_artist(barrier_plot)
+
+        ax.axis('equal')
         pl.show()
 
     def distance_from_center(self):
@@ -497,8 +547,24 @@ whiteandred_b = ["061119_1", "061119_2", "061119_3",
 blackandred_b = ["061219_2", "061219_3", "061219_4",
                  "061319_1", "061319_2", "061319_3"]
 
-navs_white = proximity_calculator(white_b, exp_type, [1, 1, 1])
-navs_red = proximity_calculator(red_b, exp_type, [1, 0, 0], navs_white[1])
+#navs_white = proximity_calculator(white_b, exp_type, [1, 1, 1])
+#navs_red = proximity_calculator(red_b, exp_type, [1, 0, 0], navs_white[1])
+
+
+navs_white, density_w = proximity_histogram(white_b, exp_type, [1, 1, 1])
+navs_red, density_r = proximity_histogram(red_b, exp_type, [1, 0, 0], np.max(density_w))
+
+# # bins div 5 takes you next to barrier.
+
+dim = density_w.shape[0]
+
+barrier_prox_stat_w = np.sum(density_w[int(dim/2) - int(dim / 5):int(dim/2) + int(dim/5), int(dim/2) - int(dim / 5):
+                                       int(dim/2) + int(dim/5)]) / np.sum(density_w)
+
+barrier_prox_stat_r = np.sum(density_r[int(dim/2) - int(dim / 5):int(dim/2) + int(dim/5), int(dim/2) - int(dim / 5):
+                                     int(dim/2) + int(dim/5)]) / np.sum(density_r)
+
+
 
 
 
