@@ -16,7 +16,7 @@ from matplotlib.collections import LineCollection
 from matplotlib.colors import ListedColormap, BoundaryNorm
 from matplotlib.image import AxesImage
 from matplotlib.colors import Colormap, Normalize
-
+import matplotlib.colors as colors
 
 
 def proximity_calculator(nav_list, condition, b_color, *value_range):
@@ -102,6 +102,8 @@ def proximity_histogram(nav_list, condition, b_color, *norm_max):
     coords_wrt_barrier = np.array(coords_wrt_barrier)
     fig = pl.figure()
     ax = fig.add_subplot(111)
+
+#    'gist_yarg is a good candidate'
     cmap = 'inferno'
 
     if norm_max != ():
