@@ -107,6 +107,7 @@ class Condition_Collector:
         self.timerange = []
         self.filter_index = 0
         self.filter_by_led = True
+        self.filter_by_numtrials = True
         # here change filter index to 1 for mag, 0 for hvsb.
         # set heading vs barrier to pos or neg.
         # filter_index 0 is h_vs_b. if neg, barrier is on left.
@@ -151,10 +152,10 @@ class Condition_Collector:
             if sum(escape_obj.stim_times_accurate) == 0:
                 self.rejected_fish.append(escape_obj.directory)
                 return 0
-            else:
-                self.included_fish.append(escape_obj.directory)
-        else:
-            self.included_fish.append(escape_obj.directory)
+    #        else:
+     #           self.included_fish.append(escape_obj.directory)
+     #   else:
+     #       self.included_fish.append(escape_obj.directory)
 
         if escape_obj.condition != self.condition:
             raise Exception('input condition mistmatch with class')
@@ -221,6 +222,7 @@ class Condition_Collector:
                     num_gfs = len(gf)
                 except TypeError:
                     num_gfs = 1
+
                 tap_times.append(num_gfs / 200.0)
                 last_x.append(escape_obj.xy_coords_by_trial[trial][0][
                     escape_obj.timerange[1]])
@@ -239,6 +241,13 @@ class Condition_Collector:
                 cstart_angles.append(escape_obj.cstart_angles[trial])
                 cstarts_executed += escape_obj.cstarts_per_trial[trial]
                 cstart_opportunities += 1
+
+                
+            if len(trialfilter) < 3 and self.filter_by_numtrials:
+                self.rejected_fish.append(escape_obj.directory)
+                return 0
+            else:
+                self.included_fish.append(escape_obj.directory)
                 
 
             # if len(escape_obj.numgrayframes) != 0:
@@ -290,7 +299,7 @@ class Condition_Collector:
             # these metrics now account for collisions that DEFLECT the fish in the right direction
             # and non-collisions that occur after a soft counterturn.
 
-            btouch_win = 35
+            btouch_win = 30
             # collision times are in frames from 100.
 
             for bri, r_coords in enumerate(br):
@@ -1083,20 +1092,11 @@ class Escapes:
 
                 bi_min_assignment = [[b for b in bout_inds_min - bi if b < 0] for bi in bi_norepeats]
                 bi_norepeats_starts = [bout_inds_min[np.argmax(b)] for b in bi_min_assignment if b]
-                
-                
 
             if len(bi_norepeats_starts) != len(bi_norepeats):
                 bi_norepeats_starts = []
                 bi_norepeats = []
-
-            
-                # pl.plot(vv_filtered)
-                # pl.plot(bi_norepeats,
-                #         np.zeros(len(bi_norepeats)), marker='.')
-                # pl.show()
-
-
+                
             # this is 200 ms backwards. does that feel right no. just go back 10 frames. 
 
             bout_init_position = [[pre_xcoords[bi],
@@ -1104,13 +1104,6 @@ class Escapes:
             bout_post_position = [[np.nanmean(pre_xcoords[bi]),
                                    np.nanmean(pre_ycoords[bi])]
                                   for bi in bi_norepeats]
-            
-            # bout_init_position = [[np.nanmean(pre_xcoords[bi-12:bi-10]),
-            #                        np.nanmean(pre_ycoords[bi-12:bi-10])]
-            #                       for bi in bi_norepeats]
-            # bout_post_position = [[np.nanmean(pre_xcoords[bi+10:bi+12]),
-            #                        np.nanmean(pre_ycoords[bi+10:bi+12])]
-            #                       for bi in bi_norepeats]
             disp_vecs = [[b[0]-a[0], b[1]-a[1]] for a,
                          b in zip(bout_init_position, bout_post_position)]
 
@@ -1154,13 +1147,8 @@ class Escapes:
             # ax[0].set_aspect('equal')
             # pl.show()
             self.pre_escape_bouts.append(bout_angles)
-            
             c_thresh = self.cstart_angle_thresh
-  #          cstart_window = [0, stim_init + 20]
- #           ta = convolve(self.tailangle_sums[trial][0:cstart_window[1]], tail_kern)
             ta = convolve(self.tailangle_sums[trial], tail_kern)
-            # avg_curl_init = np.nanmean(ta[0:self.pre_c])
-            # ta = ta - avg_curl_init
 
             # currently the "order" arg to argrelmin and max is only 1, meaning
             # the relmin and max happen if the left and right of the index are both smaller or both bigger. also, the gaussian
@@ -1757,19 +1745,23 @@ def pairwise_l_to_n_PI(ec_left, ec_right):
     n_right_mauth_bleft = []
     n_left_mauth_bright = []
     n_left_mauth_bleft = []
+    print(ec_left[0].included_fish)
+    print(ec_left[1].included_fish)
     for fish_ind, fish in enumerate(ec_left[0].included_fish):
         try:
             n_trial_index = ec_left[1].included_fish.index(fish)
         except ValueError:
             print("VAL ERROR")
             continue
-
+        
         pi_bright = -1 * (2 * ec_left[0].escape_data['Correct Trajectory Percentage BRight'][fish_ind] - 1)
         pi_bleft = 2 * ec_left[0].escape_data['Correct Trajectory Percentage BLeft'][fish_ind] - 1
         pi_control = -1 * (2 * ec_left[1].escape_data['Left Traj Percentage'][n_trial_index] - 1)
+        
 
-        if pi_control in [1.0, -1.0]:
-            continue
+
+#        if pi_control in [1.0, -1.0]:
+ #           continue
         
         if math.isfinite(pi_bright):
             n_left_mauth_bright.append(pi_control)
@@ -1789,12 +1781,13 @@ def pairwise_l_to_n_PI(ec_left, ec_right):
         except ValueError:
             print("VAL ERROR")
             continue
+
         pi_bright = -1 * (2 * ec_right[0].escape_data['Correct Trajectory Percentage BRight'][fish_ind] - 1)
         pi_bleft = 2 * ec_right[0].escape_data['Correct Trajectory Percentage BLeft'][fish_ind] - 1
         pi_control = -1 * (2 * ec_right[1].escape_data['Left Traj Percentage'][n_trial_index] - 1)
 
-        if pi_control in [1.0, -1.0]:
-            continue
+     #   if pi_control in [1.0, -1.0]:
+     #       continue
         
         if math.isfinite(pi_bright):
             n_right_mauth_bright.append(pi_control)
@@ -2411,6 +2404,11 @@ def experiment_collector(drct_list, cond_list, filter_settings, *new_exps):
         if cnd != 'n':
             cc.filter_function = filter_settings[1]
         cc.filter_by_led = filter_settings[2]
+        try:
+            dontfiltertrials = filter_settings[3]
+            cc.filter_by_numtrials = dontfiltertrials
+        except IndexError:
+            pass
     if new_exps != ():
         new_exps = new_exps[0]
     os.chdir('/Volumes/Esc_and_2P/Escape_Results')
@@ -2485,15 +2483,27 @@ def boxplot_across_conditions(data_lists, cmap):
     
     
 def correct_traj_by_visual_window(fishlist, div, mapfunc, conditions):
+    fig, ax = pl.subplots(1, 2)
+    total_correct_tlist = []
+    count_thresh = 3
     for condition in conditions:
         correct_traj_percentage = []
+        total_correct_trials = []
         for win in range(0, 180, div):
             ec = experiment_collector(fishlist, [condition],
-                                      [0, lambda x: (-win-div < x < -win) or (win < x < win + div), 1])
-            if np.sum([not math.isnan(x) for x in ec[0].escape_data['Correct Trajectory Percentage']]) > 1:
+                                      [0, lambda x: (-win-div < x < -win) or (win < x < win + div), 1, False])
+            if np.sum([not math.isnan(x) for x in ec[0].escape_data['Correct Trajectory Percentage']]) > count_thresh:
                    correct_traj_percentage.append(ec[0].escape_data['Correct Trajectory Percentage'])
             else:
                    correct_traj_percentage.append([])
+
+            total_trials = np.sum(ec[0].escape_data["Total Correct Trajectories"])
+            if total_trials > count_thresh:
+                total_correct_ratio = -1*np.diff(ec[0].escape_data["Total Correct Trajectories"])[0] / total_trials
+                total_correct_trials.append(total_correct_ratio)
+            else:
+                total_correct_trials.append(np.nan)
+                   
         xvals = []
         for i, d in enumerate(correct_traj_percentage):
       #      if i <= 6:
@@ -2506,9 +2516,12 @@ def correct_traj_by_visual_window(fishlist, div, mapfunc, conditions):
             p_color = 'gold'
         else:
             p_color = 'silver'
-        sb.lineplot(x=xv_concat, y=yvals, color=p_color)
+        sb.lineplot(x=xv_concat, y=yvals, color=p_color, ax=ax[0])
+        ax[1].plot(total_correct_trials, color=p_color)
+        total_correct_tlist.append(total_correct_trials)
     sb.despine()
     pl.show()
+    return total_correct_tlist
 
 def make_velocity_plots(ec_input, ci):
     all_vels = []
@@ -2617,10 +2630,12 @@ if __name__ == '__main__':
     white_and_virtual_list = [four_w, virtual, virtual]
     red_b_list = [four_b, red24mm_4mmdist, red12mm_4mmdist_2h, red12mm_4mmdist, red48mm_8mmdist_2h,
                   red48mm_8mmdist]
-    viswin = 20
-    visfunc = lambda x: (-180 + viswin < x < -viswin) or (
-        viswin < x < 180-viswin)
+    viswin = 15
+#    visfunc = lambda x: (-180 + viswin < x < -viswin) or (
+ #       viswin < x < 180-viswin)
 
+    visfunc = lambda x: (-180 < x < -viswin) or (viswin < x < 180)
+    
    # for w in wik_mauthner_r:
     #    mec = experiment_collector([w], ['n'],
      #                              [0, visfunc, 0])
@@ -2668,53 +2683,53 @@ if __name__ == '__main__':
 
     
 
-    ecs_virtual = experiment_collector(virtual, ['v', 'i', 'n'], [0, visfunc, 1])
+    # ecs_virtual = experiment_collector(virtual, ['v', 'i', 'n'], [0, visfunc, 1])
     
-    ec_fourb = experiment_collector(four_b, ['l', 'd', 'n'],
-                                    [0, visfunc, 1])
+#     ec_fourb = experiment_collector(four_b, ['l', 'd', 'n'],
+#                                     [0, visfunc, 1])
 
-    ec_fourw = experiment_collector(four_w, ['l', 'n'],
-                                    [0, visfunc, 1])
-    plot_all_results(ec_fourb)
+#     ec_fourw = experiment_collector(four_w, ['l', 'n'],
+#                                     [0, visfunc, 1])
+#     plot_all_results(ec_fourb)
 
-    hairplot_heatmap([ec_fourb[0]])
-    hairplot_heatmap([ec_fourb[1]])
-    hairplot_heatmap([ec_fourw[0]])
+#     hairplot_heatmap([ec_fourb[0]])
+#     hairplot_heatmap([ec_fourb[1]])
+#     hairplot_heatmap([ec_fourw[0]])
 
-    hairplot_collisionmap(ec_fourb[0], ec_fourb[1], 1)
+#     hairplot_collisionmap(ec_fourb[0], ec_fourb[1], 1)
 
-    correct_traj_by_visual_window(four_b, 10, lambda x: 2*x - 1, ['l', 'd'])
-    correct_traj_by_visual_window(four_w, 15, lambda x: 2*x - 1, ['l'])
+#     vb = correct_traj_by_visual_window(four_b, 7, lambda x: 2*x - 1, ['l', 'd'])
+#     vw = correct_traj_by_visual_window(four_w, 7, lambda x: 2*x - 1, ['l'])
 
-    #     # use barrier on the left for light and dark. then use 2d histograms close in
-#     # for N trials, L Trials and D trials. Show the heading to barrier plot and
-#     # make sure it is correct. Say because we saw a significant difference in approach angle, we
-#     # wondered whether the correct trajectory rate held across retinal occupancies. It didn't.
-#     # We used the 20 window. Show heatplots for all of these. 
+#     #     # use barrier on the left for light and dark. then use 2d histograms close in
+# #     # for N trials, L Trials and D trials. Show the heading to barrier plot and
+# #     # make sure it is correct. Say because we saw a significant difference in approach angle, we
+# #     # wondered whether the correct trajectory rate held across retinal occupancies. It didn't.
+# #     # We used the 20 window. Show heatplots for all of these. 
 
 
-    all_n_coords, all_n_ec = get_n_trajectories(red_b_list + white_and_virtual_list[0:2])
-    # args are order by length, invert by barrier, and alpha
-    ltp_n = combined_hairplot(all_n_ec, 0, 0, .6)
-    combined_hairplot([ec_fourb[0]], 0, 1, .7)
-    combined_hairplot([ec_fourb[1]], 1, 1, .7)
-    hairplot_heatmap(all_n_ec, 1)
+#     all_n_coords, all_n_ec = get_n_trajectories(red_b_list + white_and_virtual_list[0:2])
+#     # args are order by length, invert by barrier, and alpha
+#     ltp_n = combined_hairplot(all_n_ec, 0, 0, .6)
+#     combined_hairplot([ec_fourb[0]], 0, 1, .7)
+#     combined_hairplot([ec_fourb[1]], 1, 1, .7)
+#     hairplot_heatmap(all_n_ec, 1)
 
     
-    fishlist = red_b_list + four_w
-    collision_stats, num_n_trials = infer_collisions(red_b_list+white_and_virtual_list[0:2],
-                                                     False, viswin)
-    plot_collision_stat(collision_stats, num_n_trials)
+#     fishlist = red_b_list + four_w
+     collision_stats, num_n_trials = infer_collisions(red_b_list+white_and_virtual_list[0:2],
+                                                      False, viswin)
+     plot_collision_stat(collision_stats, num_n_trials)
     
-    hairplot_heatmap([ec_fourw[0]])
-    plot_all_results(ec_fourw)
+#     hairplot_heatmap([ec_fourw[0]])
+#     plot_all_results(ec_fourw)
 
-# # used to test stim and cstart detection -- perfect! 
-# #    four_b_1 = ['022619_2', '030519_1']
+# # # used to test stim and cstart detection -- perfect! 
+# # #    four_b_1 = ['022619_2', '030519_1']
 
-    red24mm_4mmdist_ec = experiment_collector(red24mm_4mmdist, ['l', 'n'],
-                                              [0, visfunc, 1])
-    plot_all_results(red24mm_4mmdist_ec)
+     red24mm_4mmdist_ec = experiment_collector(red24mm_4mmdist, ['l', 'n'],
+                                               [0, visfunc, 1])
+     plot_all_results(red24mm_4mmdist_ec)
 
     red12mm_4mmdist_ec_2h = experiment_collector(red12mm_4mmdist_2h,
                                                  ['l', 'n'], [0, visfunc, 1])
@@ -2735,86 +2750,86 @@ if __name__ == '__main__':
 
     
  
-# #    
+# # #    
 
-# #     collect_collision_stat(fishlist, 'l', np.ones(len(fishlist)), [0, visfunc, 1])
+# # #     collect_collision_stat(fishlist, 'l', np.ones(len(fishlist)), [0, visfunc, 1])
    
-#     """ PLOTS FOR PAPER """
+# #     """ PLOTS FOR PAPER """
 
     
-    white_and_virtual_bleft = collect_varb_across_ec(white_and_virtual_list, ['l', 'v', 'i'],
-                                                    "Correct Trajectory Percentage BLeft", [0, visfunc, 1])
-    white_and_virtual_bright = collect_varb_across_ec(white_and_virtual_list, ['l', 'v', 'i'],
-                                                     "Correct Trajectory Percentage BRight", [0, visfunc, 1])
-    white_and_virtual_correct = collect_varb_across_ec(white_and_virtual_list, ['l', 'v', 'i'],
-                                                    "Correct Trajectory Percentage", [0, visfunc, 1])
+#     white_and_virtual_bleft = collect_varb_across_ec(white_and_virtual_list, ['l', 'v', 'i'],
+#                                                     "Correct Trajectory Percentage BLeft", [0, visfunc, 1])
+#     white_and_virtual_bright = collect_varb_across_ec(white_and_virtual_list, ['l', 'v', 'i'],
+#                                                      "Correct Trajectory Percentage BRight", [0, visfunc, 1])
+#     white_and_virtual_correct = collect_varb_across_ec(white_and_virtual_list, ['l', 'v', 'i'],
+#                                                     "Correct Trajectory Percentage", [0, visfunc, 1])
 
-    plot_varb_over_ecs([white_and_virtual_bleft, lambda x: (2*x -1)],
-                       [white_and_virtual_bright, lambda x: -1*(2*x - 1)])
+#     plot_varb_over_ecs([white_and_virtual_bleft, lambda x: (2*x -1)],
+#                        [white_and_virtual_bright, lambda x: -1*(2*x - 1)])
 
-    plot_varb_over_ecs([white_and_virtual_correct, lambda x: 2*x -1])
+#     plot_varb_over_ecs([white_and_virtual_correct, lambda x: 2*x -1])
 
-    red_bleft = collect_varb_across_ec(red_b_list, 'l', 'Correct Trajectory Percentage BLeft', [0, visfunc, 1])
+#     red_bleft = collect_varb_across_ec(red_b_list, 'l', 'Correct Trajectory Percentage BLeft', [0, visfunc, 1])
 
-    red_bright = collect_varb_across_ec(red_b_list, 'l', 'Correct Trajectory Percentage BRight', [0, visfunc, 1])
+#     red_bright = collect_varb_across_ec(red_b_list, 'l', 'Correct Trajectory Percentage BRight', [0, visfunc, 1])
 
-    red_correct = collect_varb_across_ec(red_b_list, 'l', 'Correct Trajectory Percentage', [0, visfunc, 1])
+#     red_correct = collect_varb_across_ec(red_b_list, 'l', 'Correct Trajectory Percentage', [0, visfunc, 1])
 
-    plot_varb_over_ecs([red_bleft, lambda x: (2*x -1)],
-                       [red_bright, lambda x: -1*(2*x - 1)])
+#     plot_varb_over_ecs([red_bleft, lambda x: (2*x -1)],
+#                        [red_bright, lambda x: -1*(2*x - 1)])
 
-    plot_varb_over_ecs([red_correct, lambda x: 2*x -1])
+#     plot_varb_over_ecs([red_correct, lambda x: 2*x -1])
 
 
 
-#    
+# # #    
     
  
-# #  #    collect_collision_stat([four_b], 'l', np.ones(len([four_b])), [0, [], 1])
+# # # #  #    collect_collision_stat([four_b], 'l', np.ones(len([four_b])), [0, [], 1])
 
-# # """ END PLOTS FOR PAPER UNCOMMENT BELOW TO RUN FULL ANALYSIS AGAIN """ 
+# # # # """ END PLOTS FOR PAPER UNCOMMENT BELOW TO RUN FULL ANALYSIS AGAIN """ 
    
 
-#     # four_b_ec = experiment_collector(
-#     #     four_b, ['l','d','n'], [0, lambda x: True, 1], four_b)
+# # #     # four_b_ec = experiment_collector(
+# # #     #     four_b, ['l','d','n'], [0, lambda x: True, 1], four_b)
 
-#     # four_w_ec = experiment_collector(
-#     #     four_w, ['l','d','n'], [0, lambda x: True, 1], four_w)
+# # #     # four_w_ec = experiment_collector(
+# # #     #     four_w, ['l','d','n'], [0, lambda x: True, 1], four_w)
 
-#     # plot_all_results(four_w_ec)
+# # #     # plot_all_results(four_w_ec)
 
-#     # red24mm_4mmdist_ec = experiment_collector(
-#     #     red24mm_4mmdist, ['l','d','n'], [0, lambda x: True, 1], red24mm_4mmdist)
+# # #     # red24mm_4mmdist_ec = experiment_collector(
+# # #     #     red24mm_4mmdist, ['l','d','n'], [0, lambda x: True, 1], red24mm_4mmdist)
 
-#     # plot_all_results(red24mm_4mmdist_ec)
+# # #     # plot_all_results(red24mm_4mmdist_ec)
 
-#     # red12mm_4mmdist_ec = experiment_collector(
-#     #     red12mm_4mmdist, ['l','d','n'], [0, lambda x: True, 1], red12mm_4mmdist)
+# # #     # red12mm_4mmdist_ec = experiment_collector(
+# # #     #     red12mm_4mmdist, ['l','d','n'], [0, lambda x: True, 1], red12mm_4mmdist)
 
-#     # red12mm_4mmdist_2h_ec = experiment_collector(
-#     #     red12mm_4mmdist_2h, ['l','d','n'], [0, lambda x: True, 1], red12mm_4mmdist_2h)
+# # #     # red12mm_4mmdist_2h_ec = experiment_collector(
+# # #     #     red12mm_4mmdist_2h, ['l','d','n'], [0, lambda x: True, 1], red12mm_4mmdist_2h)
 
-#     # red48mm_8mmdist_2h_ec = experiment_collector(
-#     #     red48mm_8mmdist_2h, ['l','d','n'], [0, lambda x: True, 1], red48mm_8mmdist_2h)
+# # #     # red48mm_8mmdist_2h_ec = experiment_collector(
+# # #     #     red48mm_8mmdist_2h, ['l','d','n'], [0, lambda x: True, 1], red48mm_8mmdist_2h)
 
-#     # red48mm_8mmdist_ec = experiment_collector(
-#     #     red48mm_8mmdist, ['l','d','n'], [0, lambda x: True, 1], red48mm_8mmdist)
+# # #     # red48mm_8mmdist_ec = experiment_collector(
+# # #     #     red48mm_8mmdist, ['l','d','n'], [0, lambda x: True, 1], red48mm_8mmdist)
     
-#     # virtual_ec = experiment_collector(virtual, ['v', 'i', 'n'], [0, lambda x: True, 1], virtual)
+# # #     # virtual_ec = experiment_collector(virtual, ['v', 'i', 'n'], [0, lambda x: True, 1], virtual)
 
-#     # mauth_l_ec = experiment_collector(wik_mauthner_l, ['l', 'n'], [0, lambda x: True, 0], wik_mauthner_l)
-#     # mauth_r_ec = experiment_collector(wik_mauthner_r, ['l', 'n'], [0, lambda x: True, 0], wik_mauthner_r)
+# # #     # mauth_l_ec = experiment_collector(wik_mauthner_l, ['l', 'n'], [0, lambda x: True, 0], wik_mauthner_l)
+# # #     # mauth_r_ec = experiment_collector(wik_mauthner_r, ['l', 'n'], [0, lambda x: True, 0], wik_mauthner_r)
 
-# # # navigation plot. make sure you understand exactly what the stat is.
-# # # current thought is "No. Visits" (in legend say filtered w 2D gaussian).
-
-
+# # # # navigation plot. make sure you understand exactly what the stat is.
+# # # # current thought is "No. Visits" (in legend say filtered w 2D gaussian).
 
 
 
-# # TODO 12/2:
-# # make sure you go through the N trials for the mauthners and they match
-# # what you think -- plot each fish's n trials and make sure the calls
-# # are right. it may be that the trajectory calls are too late now.
+
+
+# # # TODO 12/2:
+# # # make sure you go through the N trials for the mauthners and they match
+# # # what you think -- plot each fish's n trials and make sure the calls
+# # # are right. it may be that the trajectory calls are too late now.
 
 
