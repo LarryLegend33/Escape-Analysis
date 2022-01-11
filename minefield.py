@@ -48,7 +48,7 @@ import matplotlib
 matplotlib.rcParams['pdf.fonttype'] = 42
 
 
-def ts_plot(list_of_lists, ax, *use_sd):
+def ts_plot(list_of_lists, ax, cl, *ci_input):
 #    fig, ax = pl.subplots(1, 1)
     index_list = list(
         itertools.chain.from_iterable(
@@ -60,10 +60,10 @@ def ts_plot(list_of_lists, ax, *use_sd):
     df_dict = {'x': index_list, 
                'y': value_list}
     df = pd.DataFrame(df_dict)
-    if use_sd != ():
-        sb.lineplot(data=df, x='x', y='y', ax=ax, ci=use_sd[0], color='deeppink')
+    if ci_input != ():
+        sb.lineplot(data=df, x='x', y='y', ax=ax, ci=ci_input[0], color=cl)  #, color='deeppink')
     else:
-        sb.lineplot(data=df, x='x', y='y', ax=ax)
+        sb.lineplot(data=df, x='x', y='y', ax=ax, color=cl)
    # pl.show()
     return df
 
@@ -116,10 +116,12 @@ class Condition_Collector:
         self.included_fish = []
         self.filter_cstart = np.nan
         self.filter_function = lambda x: True
-        self.velocity_threshold = 2.3
+        self.velocity_threshold = 0
+        # 2.3 is the thresh to get rid of stubs
         self.pre_c = 10
         self.all_velocities = []
         self.filtered_velocities = []
+        self.max_vel_average_per_fish = []
 
     def update_ddict(self, escape_obj):
 
@@ -135,13 +137,13 @@ class Condition_Collector:
             dx = np.diff(xyrec[0][self.timerange[0]+self.pre_c:self.timerange[1]])
             dy = np.diff(xyrec[1][self.timerange[0]+self.pre_c:self.timerange[1]])
             velocities = [magvector([xd, yd]) for xd, yd in zip(dx, dy)]
+            # this gets rid of velocities that are due to mistakes in tracking.
             filtered_velocities = median_filter(velocities, 3)
             self.all_velocities.append(velocities)
-            self.filtered_velocities.append(filtered_velocities)
-#            if np.max(velocities) < self.velocity_threshold:
             if np.max(filtered_velocities) < self.velocity_threshold:
                 return False
             else:
+                self.filtered_velocities.append(filtered_velocities)
                 return True
 
         def traj_direction(xyrec, end_bound=-1):
@@ -189,6 +191,7 @@ class Condition_Collector:
             cstarts_executed = 0
             cstart_opportunities = 0
             non_nan_collisions = []
+            max_velocities_per_trial = []
             # filter for specific trials that satisify filter conditions
             # get rid of wall trials if you input data that contains wall
             
@@ -241,6 +244,7 @@ class Condition_Collector:
                 cstart_angles.append(escape_obj.cstart_angles[trial])
                 cstarts_executed += escape_obj.cstarts_per_trial[trial]
                 cstart_opportunities += 1
+                max_velocities_per_trial.append(np.max(self.filtered_velocities[-1]))
 
                 
             if len(trialfilter) < 3 and self.filter_by_numtrials:
@@ -248,6 +252,8 @@ class Condition_Collector:
                 return 0
             else:
                 self.included_fish.append(escape_obj.directory)
+                self.max_vel_average_per_fish.append(np.mean(max_velocities_per_trial))
+
                 
 
             # if len(escape_obj.numgrayframes) != 0:
@@ -1734,6 +1740,7 @@ def plot_varb_over_ecs(dv1, *dv2):
 def pairwise_l_to_n_PI(ec_left, ec_right):
     sb.set(style="ticks", rc={"lines.linewidth": 1})
     cp = sb.color_palette('husl', 8)
+    cp = ['k', 'k', 'k', 'k']
     # quantify this using turns towards the ablated mauthner.
     # barrier on side of ablated mauthner vs opposite.
     fig, axes = pl.subplots(2, 2, sharey=True)
@@ -1877,12 +1884,6 @@ def pairwise_l_to_n_PI(ec_left, ec_right):
     print(scipy.stats.ttest_rel(n_barrier_on_ablated_side, l_barrier_on_ablated_side))
     print(scipy.stats.ttest_rel(n_barrier_on_nonablated_side, l_barrier_on_nonablated_side))
 
-    print(scipy.stats.wilcoxon(n_left_mauth_bright, l_left_mauth_bright))
-    print(scipy.stats.wilcoxon(n_left_mauth_bleft, l_left_mauth_bleft))
-    print(scipy.stats.wilcoxon(n_right_mauth_bright, l_right_mauth_bright))
-    print(scipy.stats.wilcoxon(n_right_mauth_bleft, l_right_mauth_bleft))
-    print(scipy.stats.wilcoxon(n_barrier_on_ablated_side, l_barrier_on_ablated_side))
-    print(scipy.stats.wilcoxon(n_barrier_on_nonablated_side, l_barrier_on_nonablated_side))
     pl.show()
 
 
@@ -1891,7 +1892,11 @@ def pairwise_l_to_n_PI(ec_left, ec_right):
 # need a hairplot for L and D trials with collisions.
 
 
-# ONCE THEYVE LEFT THEIR START POSITION!! 
+# data reflects choices after the fish has left its start position. 
+# the space is 15 x 8 in binsize, with this reflecting 30 x 16 pixels in space.
+# each pixel is 
+
+
 def hairplot_heatmap(ec_list, *combine_maps):
     xbound = 15
     ybound = 8
@@ -1905,9 +1910,11 @@ def hairplot_heatmap(ec_list, *combine_maps):
     cmap = 'inferno'
     bleft_matrix = np.zeros([hm_bins_x, hm_bins_y])
     bright_matrix = np.zeros([hm_bins_x, hm_bins_y])
+    total_trajectories = 0
 
     for ec in ec_list:
         ec_data = ec.convert_to_nparrays()
+        total_trajectories += len(ec_data['Barrier On Left Trajectories']) + len(ec_data['Barrier On Right Trajectories'])
         for bl_coords in ec_data['Barrier On Left Trajectories']:
             traj_coords_bleft = []
             int_len = len(bl_coords[0][traj_begin:])
@@ -1937,10 +1944,18 @@ def hairplot_heatmap(ec_list, *combine_maps):
                 if (np.abs(brx) > startleave * (xbound / hm_bins_x)) or (
                         np.abs(bry) > startleave * (ybound / hm_bins_y)):
                     traj_coords_bright.append([brx, bry])
-            hm = np.histogram2d([x[0] for x in traj_coords_bright],
+
+
+            if combine_maps[0] == 2:
+                hm = np.histogram2d([-x[0] for x in traj_coords_bright],
                                 [y[1] for y in traj_coords_bright],
                                 range = [[-xbound, xbound], [-ybound, ybound]],
                                 bins=[hm_bins_x, hm_bins_y], density=False)
+            else:    
+                hm = np.histogram2d([x[0] for x in traj_coords_bright],
+                                    [y[1] for y in traj_coords_bright],
+                                    range = [[-xbound, xbound], [-ybound, ybound]],
+                                    bins=[hm_bins_x, hm_bins_y], density=False)
             bins_visited = (hm[0] != 0).astype(np.int)
             bright_matrix += bins_visited
 
@@ -1953,11 +1968,15 @@ def hairplot_heatmap(ec_list, *combine_maps):
 #    fig.colorbar(cmap, ax=ax[0])
     pl.show()
 
+    
+
     if combine_maps != ():
         
         fig, ax = pl.subplots(1, 1)
         combined_mat = bleft_matrix + bright_matrix
-        ax.pcolormesh(hm[1], hm[2], combined_mat.T / np.max(combined_mat), cmap=cmap)
+#        ax.pcolormesh(hm[1], hm[2], combined_mat.T / np.max(combined_mat), cmap=cmap)
+        im = ax.pcolormesh(hm[1], hm[2], combined_mat.T / total_trajectories, cmap=cmap)
+        fig.colorbar(im, ax=ax)
         ax.set_aspect('equal')
         pl.show()
         
@@ -2265,7 +2284,7 @@ def plot_all_results(cond_collector_list):
         cond_data_arrays.append(cond_data)
         try:
 #            tsplot(cond_data['Heading vs Barrier'], axes[0])
-            ts_plot(cond_data['Heading vs Barrier'], axes[0])
+            ts_plot(cond_data['Heading vs Barrier'], axes[0], 'k')
 #            sb.lineplot(data=df_conddata,
  #                       ax=axes[0], estimator=np.nanmean, color=cpal[cond_ind])
         except RuntimeError:
@@ -2523,13 +2542,78 @@ def correct_traj_by_visual_window(fishlist, div, mapfunc, conditions):
     pl.show()
     return total_correct_tlist
 
-def make_velocity_plots(ec_input, ci):
-    all_vels = []
-    for ec in ec_input:
-        all_vels += ec.filtered_velocities
-    fig, ax = pl.subplots(1,1)
-    ts_plot(all_vels, ax, ci)
+
+def make_velocity_plots(ec_by_condition, ci):
+
+    cpal = sb.color_palette('hls', 8)
+    fig, ax = pl.subplots(1, 2)
+    c1_vels = []
+    c2_vels = []
+    pairwise_max_vels = []
+    for ec1, ec2 in itz.zip_longest(ec_by_condition[0], ec_by_condition[1]):
+        c1_vels += ec1.filtered_velocities
+        c2_vels += ec2.filtered_velocities
+
+        for accepted_fish, avg_max_vel_1 in itz.zip_longest(ec1.included_fish, ec1.max_vel_average_per_fish):
+            if accepted_fish in ec2.included_fish:
+                vel_ind = ec2.included_fish.index(accepted_fish)
+                vel_pair = [avg_max_vel_1, ec2.max_vel_average_per_fish[vel_ind]]
+                pairwise_max_vels.append(vel_pair)
+                sb.lineplot(x=np.array([0, 1]), y=np.array(vel_pair),
+                            ax=ax[1], markers=True, marker='.', color='k', alpha=.1)
+                
+    ts_plot(c1_vels, ax[0], cpal[0], ci)
+    ts_plot(c2_vels, ax[0], 'k', ci)
+    l_velocities = [v[0] for v in pairwise_max_vels]
+    n_velocities = [v[1] for v in pairwise_max_vels]
+    
+    sb.pointplot(x=np.concatenate([np.zeros(len(l_velocities)),
+                                   np.ones(len(n_velocities))]),
+                 y=np.concatenate([l_velocities,
+                                   n_velocities]), color='k', ax=ax[1], zorder=20)
+
+
+    
     pl.show()
+
+
+def pairwise_light_dark(ec_fb):
+    fig, ax = pl.subplots(1, 2)
+    ld_correct_pairs = []
+    ld_collision_pairs = []
+    for light_ind, fish in enumerate(ec_fb[0].included_fish):
+        tp = ec_fb[0].escape_data["Correct Trajectory Percentage"][light_ind]
+        l_collision_rate = ec_fb[0].escape_data["Collision Percentage"][light_ind]
+        try:
+            dark_ind = ec_fb[1].included_fish.index(fish)
+        except ValueError:
+            continue
+        esc_pair = [2*tp - 1, 2*ec_fb[1].escape_data["Correct Trajectory Percentage"][dark_ind] - 1]
+        collision_pair = [l_collision_rate, ec_fb[1].escape_data["Collision Percentage"][dark_ind]]
+        ld_correct_pairs.append(esc_pair)
+        ld_collision_pairs.append(collision_pair)
+        sb.lineplot(x=np.array([0, 1]), y=np.array(esc_pair),
+                            ax=ax[0], markers=True, marker='.', color='k', alpha=.1)
+    l_avoidance = [e[0] for e in ld_correct_pairs]
+    d_avoidance = [e[1] for e in ld_correct_pairs]
+    l_collisions = [c[0] for c in ld_collision_pairs]
+    d_collisions = [c[1] for c in ld_collision_pairs]
+
+    sb.pointplot(x=np.concatenate([np.zeros(len(l_avoidance)),
+                                   np.ones(len(d_avoidance))]),
+                 y=np.concatenate([l_avoidance,
+                                   d_avoidance]), color='k', ax=ax[0], zorder=20)
+    sb.barplot(x=np.concatenate([np.zeros(len(l_collisions)),
+                                 np.ones(len(d_collisions))]),
+               y=np.concatenate([l_collisions,
+                                 d_collisions]), color='k', ax=ax[1], zorder=20)
+    print(ttest_rel(l_avoidance, d_avoidance))
+    print(ttest_rel(l_collisions, d_collisions))
+    pl.show()
+
+
+# ec.filtered_velocities is a list of velocity trials per condition for every fish in the ec.
+
 
 
     # SIMPLE -- MAKE A 2D HISTOGRAM OF ALL BARRIER TRAJECTORIES. ZOOM IN AND FIND THE RIGHT BINNING.
@@ -2628,9 +2712,9 @@ if __name__ == '__main__':
     # barrier zone is calculated by taking the gray coords right before barrierzone entry. 
     
     white_and_virtual_list = [four_w, virtual, virtual]
-    red_b_list = [four_b, red24mm_4mmdist, red12mm_4mmdist_2h, red12mm_4mmdist, red48mm_8mmdist_2h,
-                  red48mm_8mmdist]
-    viswin = 15
+    red_b_list = [four_b, red24mm_4mmdist, red12mm_4mmdist_2h, red12mm_4mmdist, red48mm_8mmdist_2h, red48mm_8mmdist]
+     
+    viswin = 0
 #    visfunc = lambda x: (-180 + viswin < x < -viswin) or (
  #       viswin < x < 180-viswin)
 
@@ -2653,27 +2737,30 @@ if __name__ == '__main__':
     mauth_r_ltp = collect_varb_across_ec(
         [wik_mauthner_r], 'n', 'Left Traj Percentage', [0, visfunc, 0])
 
-
     mauth_l_ltp = collect_varb_across_ec(
         [wik_mauthner_l], 'n', 'Left Traj Percentage', [0, visfunc, 0])
 
     all_ltp = collect_varb_across_ec(red_b_list+white_and_virtual_list[0:2],
                                      'n', 'Left Traj Percentage', [0, visfunc, 1])
 
-    
     ltp_PI = list(map(lambda x: -1*(2*x - 1), np.concatenate(all_ltp)))
     mauthner_l_PI = list(map(lambda x: -1*(2*x - 1), mauth_l_ltp[0]))
-    mauthner_r_PI = list(map(lambda x: -1*(2*x - 1), mauth_r_ltp[0]))
+#    mauthner_r_PI = list(map(lambda x: -1*(2*x - 1), mauth_r_ltp[0]))
+    mauthner_r_PI = list(map(lambda x: (2*x - 1), mauth_r_ltp[0]))
+    mauthner_all = mauthner_l_PI + mauthner_r_PI
     cpal = sb.color_palette('husl', 8)
     cpal2 = sb.color_palette('hls', 8)
     fig, ax = pl.subplots(1, 1)
     sb.set(style="ticks", rc={"lines.linewidth": 1})
     sb.kdeplot(ltp_PI,
                color=cpal2[0], clip=[-1, 1], ax=ax)
-    sb.kdeplot(mauthner_l_PI,
-               clip=[-1, 1], ax=ax, color=cpal[3])
-    sb.kdeplot(mauthner_r_PI, 
+#    sb.kdeplot(mauthner_l_PI,
+ #              clip=[-1, 1], ax=ax, color=cpal[3])
+#    sb.kdeplot(mauthner_r_PI, 
+ #              clip=[-1, 1], ax=ax, color=cpal[1])
+    sb.kdeplot(mauthner_all, 
                clip=[-1, 1], ax=ax, color=cpal[1])
+
     pl.show()
     ax.set_xlim([-1, 1])
     p_n_to_l = ttest_ind(ltp_PI, mauthner_l_PI)
@@ -2681,26 +2768,31 @@ if __name__ == '__main__':
     PI_means = list(map(np.mean, [ltp_PI, mauthner_l_PI, mauthner_r_PI]))
     PI_stds = list(map(np.std, [ltp_PI, mauthner_l_PI, mauthner_r_PI]))
 
-    
-
-    # ecs_virtual = experiment_collector(virtual, ['v', 'i', 'n'], [0, visfunc, 1])
-    
-#     ec_fourb = experiment_collector(four_b, ['l', 'd', 'n'],
-#                                     [0, visfunc, 1])
-
-#     ec_fourw = experiment_collector(four_w, ['l', 'n'],
-#                                     [0, visfunc, 1])
+    ecs_virtual = experiment_collector(virtual, ['v', 'i', 'n'], [0, visfunc, 1])
+    ec_fourb = experiment_collector(four_b, ['l', 'd', 'n'],
+                                    [0, visfunc, 1])
+    ec_fourw = experiment_collector(four_w, ['l', 'n'],
+                                    [0, visfunc, 1])
 #     plot_all_results(ec_fourb)
 
-#     hairplot_heatmap([ec_fourb[0]])
-#     hairplot_heatmap([ec_fourb[1]])
-#     hairplot_heatmap([ec_fourw[0]])
+    hairplot_heatmap([ec_fourb[0]], 2)
+    hairplot_heatmap([ec_fourb[1]], 2)
+    hairplot_heatmap([ec_fourb[2]], 1)
+    
+    hairplot_heatmap([ec_fourw[0]], 2)
 
 #     hairplot_collisionmap(ec_fourb[0], ec_fourb[1], 1)
 
-#     vb = correct_traj_by_visual_window(four_b, 7, lambda x: 2*x - 1, ['l', 'd'])
-#     vw = correct_traj_by_visual_window(four_w, 7, lambda x: 2*x - 1, ['l'])
+#    vb = correct_traj_by_visual_window(four_b + four_w, 15, lambda x: 2*x - 1, ['l', 'd'])
+    vb = correct_traj_by_visual_window(four_b, 15, lambda x: 2*x - 1, ['l', 'd'])
+    vw = correct_traj_by_visual_window(four_w, 15, lambda x: 2*x - 1, ['l'])
 
+
+#    vb = correct_traj_by_visual_window(four_b, 25, lambda x: 2*x - 1, ['l', 'd'])
+#    vw = correct_traj_by_visual_window(four_w, 25, lambda x: 2*x - 1, ['l'])
+
+
+    
 #     #     # use barrier on the left for light and dark. then use 2d histograms close in
 # #     # for N trials, L Trials and D trials. Show the heading to barrier plot and
 # #     # make sure it is correct. Say because we saw a significant difference in approach angle, we
@@ -2708,28 +2800,29 @@ if __name__ == '__main__':
 # #     # We used the 20 window. Show heatplots for all of these. 
 
 
-#     all_n_coords, all_n_ec = get_n_trajectories(red_b_list + white_and_virtual_list[0:2])
-#     # args are order by length, invert by barrier, and alpha
-#     ltp_n = combined_hairplot(all_n_ec, 0, 0, .6)
-#     combined_hairplot([ec_fourb[0]], 0, 1, .7)
-#     combined_hairplot([ec_fourb[1]], 1, 1, .7)
-#     hairplot_heatmap(all_n_ec, 1)
+    all_n_coords, all_n_ec = get_n_trajectories(red_b_list + white_and_virtual_list[0:2])
+    # args are order by length, invert by barrier, and alpha
+    ltp_n = combined_hairplot(all_n_ec, 0, 0, .7)
+
+    combined_hairplot([ec_fourb[2]], 0, 0, .7)
+    combined_hairplot([ec_fourb[0]], 0, 1, .7)
+    combined_hairplot([ec_fourb[1]], 1, 1, .7)
+    hairplot_heatmap(all_n_ec, 1)
+    plot_all_results(ec_fourb)
+    plot_all_results(ec_fourw)
 
     
 #     fishlist = red_b_list + four_w
-     collision_stats, num_n_trials = infer_collisions(red_b_list+white_and_virtual_list[0:2],
-                                                      False, viswin)
-     plot_collision_stat(collision_stats, num_n_trials)
+    # collision_stats, num_n_trials = infer_collisions(red_b_list+white_and_virtual_list[0:2],
+    #                                                   False, viswin)
+    # plot_collision_stat(collision_stats, num_n_trials)
     
-#     hairplot_heatmap([ec_fourw[0]])
-#     plot_all_results(ec_fourw)
-
 # # # used to test stim and cstart detection -- perfect! 
 # # #    four_b_1 = ['022619_2', '030519_1']
 
-     red24mm_4mmdist_ec = experiment_collector(red24mm_4mmdist, ['l', 'n'],
+    red24mm_4mmdist_ec = experiment_collector(red24mm_4mmdist, ['l', 'n'],
                                                [0, visfunc, 1])
-     plot_all_results(red24mm_4mmdist_ec)
+    plot_all_results(red24mm_4mmdist_ec)
 
     red12mm_4mmdist_ec_2h = experiment_collector(red12mm_4mmdist_2h,
                                                  ['l', 'n'], [0, visfunc, 1])
@@ -2739,7 +2832,6 @@ if __name__ == '__main__':
                                               ['l', 'n'], [0, visfunc, 1])
     plot_all_results(red12mm_4mmdist_ec)
 
-
     red48mm_8mmdist_ec_2h = experiment_collector(red48mm_8mmdist_2h,
                                                  ['l', 'n'], [0, visfunc, 1])
     plot_all_results(red48mm_8mmdist_ec_2h)
@@ -2748,39 +2840,63 @@ if __name__ == '__main__':
                                               ['l', 'n'], [0, visfunc, 1])
     plot_all_results(red48mm_8mmdist_ec)
 
-    
- 
-# # #    
 
-# # #     collect_collision_stat(fishlist, 'l', np.ones(len(fishlist)), [0, visfunc, 1])
+    make_velocity_plots([[ec_fourb[0], red12mm_4mmdist_ec[0], red12mm_4mmdist_ec_2h[0], red24mm_4mmdist_ec[0]],
+                        [ec_fourb[2], red12mm_4mmdist_ec[1], red12mm_4mmdist_ec_2h[1], red24mm_4mmdist_ec[1]]], 95)
+
+    make_velocity_plots([[red48mm_8mmdist_ec_2h[0], red48mm_8mmdist_ec[0]],
+                          [red48mm_8mmdist_ec_2h[1], red48mm_8mmdist_ec[1]]], 95)
+    
+
+# #    
+
+# #     collect_collision_stat(fishlist, 'l', np.ones(len(fishlist)), [0, visfunc, 1])
    
-# #     """ PLOTS FOR PAPER """
+#     """ PLOTS FOR PAPER """
 
     
-#     white_and_virtual_bleft = collect_varb_across_ec(white_and_virtual_list, ['l', 'v', 'i'],
-#                                                     "Correct Trajectory Percentage BLeft", [0, visfunc, 1])
-#     white_and_virtual_bright = collect_varb_across_ec(white_and_virtual_list, ['l', 'v', 'i'],
-#                                                      "Correct Trajectory Percentage BRight", [0, visfunc, 1])
-#     white_and_virtual_correct = collect_varb_across_ec(white_and_virtual_list, ['l', 'v', 'i'],
-#                                                     "Correct Trajectory Percentage", [0, visfunc, 1])
+    white_and_virtual_bleft = collect_varb_across_ec(white_and_virtual_list, ['l', 'v', 'i'],
+                                                    "Correct Trajectory Percentage BLeft", [0, visfunc, 1])
+    white_and_virtual_bright = collect_varb_across_ec(white_and_virtual_list, ['l', 'v', 'i'],
+                                                     "Correct Trajectory Percentage BRight", [0, visfunc, 1])
+    white_and_virtual_correct = collect_varb_across_ec(white_and_virtual_list, ['l', 'v', 'i'],
+                                                    "Correct Trajectory Percentage", [0, visfunc, 1])
 
-#     plot_varb_over_ecs([white_and_virtual_bleft, lambda x: (2*x -1)],
-#                        [white_and_virtual_bright, lambda x: -1*(2*x - 1)])
+    plot_varb_over_ecs([white_and_virtual_bleft, lambda x: (2*x -1)],
+                       [white_and_virtual_bright, lambda x: -1*(2*x - 1)])
 
-#     plot_varb_over_ecs([white_and_virtual_correct, lambda x: 2*x -1])
+    plot_varb_over_ecs([white_and_virtual_correct, lambda x: 2*x -1])
 
-#     red_bleft = collect_varb_across_ec(red_b_list, 'l', 'Correct Trajectory Percentage BLeft', [0, visfunc, 1])
+    red_bleft = collect_varb_across_ec(red_b_list, 'l', 'Correct Trajectory Percentage BLeft', [0, visfunc, 1])
 
-#     red_bright = collect_varb_across_ec(red_b_list, 'l', 'Correct Trajectory Percentage BRight', [0, visfunc, 1])
+    red_bright = collect_varb_across_ec(red_b_list, 'l', 'Correct Trajectory Percentage BRight', [0, visfunc, 1])
 
-#     red_correct = collect_varb_across_ec(red_b_list, 'l', 'Correct Trajectory Percentage', [0, visfunc, 1])
+    red_correct = collect_varb_across_ec(red_b_list, 'l', 'Correct Trajectory Percentage', [0, visfunc, 1])
 
-#     plot_varb_over_ecs([red_bleft, lambda x: (2*x -1)],
-#                        [red_bright, lambda x: -1*(2*x - 1)])
+    plot_varb_over_ecs([red_bleft, lambda x: (2*x -1)],
+                       [red_bright, lambda x: -1*(2*x - 1)])
 
-#     plot_varb_over_ecs([red_correct, lambda x: 2*x -1])
+    correct_pi = plot_varb_over_ecs([red_correct, lambda x: 2*x -1])
+
+    cstart_latencies = collect_varb_across_ec(red_b_list, 'l', 'CStart Latency', [0, visfunc, 1])
+    cstart_amplitudes = collect_varb_across_ec(red_b_list, 'l', 'CStart Angle', [0, visfunc, 1])
+    sb.distplot(2*np.concatenate(cstart_latencies), bins=10)
+    pl.show()
+    sb.distplot(np.concatenate(cstart_amplitudes), bins=10)
+    pl.show()
+
+    fig, ax = pl.subplots(1,1)
+    sb.distplot(ltp_PI, bins=5, ax=ax)
+#    ax.set_xlim([-1,1])
+    
 
 
+    # USE TTEST_1SAMP W POP MEAN 0.
+
+    ttest_results = [scipy.stats.ttest_1samp(list(map(lambda x: (2*x -1), a)), popmean=0) for a in red_correct]
+    
+
+    
 
 # # #    
     
