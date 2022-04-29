@@ -122,6 +122,8 @@ class Condition_Collector:
         self.all_velocities = []
         self.filtered_velocities = []
         self.max_vel_average_per_fish = []
+        self.velocities_per_trial_per_fish = []
+        self.num_trials_per_fish = []
 
     def update_ddict(self, escape_obj):
 
@@ -201,7 +203,7 @@ class Condition_Collector:
                         print("EMPTY XY COORDS")
                         trialfilter.remove(trial)
                 if trial in trialfilter:
-                    self.escape_data['Total Valid Trials'] += 1
+
                     # ask if the trial contains a collision and is in 'l' or 'd'
                     if not velocity_filter(
                             escape_obj.xy_coords_by_trial[
@@ -210,15 +212,12 @@ class Condition_Collector:
                         self.escape_data['No Escape'] += 1
                         trialfilter.remove(trial)
                         print("VELOCITY FILTER")
+                    if wallfilter(escape_obj.initial_conditions[trial][4]):
+                        print("INSIDE WALLFILTER")
+                        trialfilter.remove(trial)
                 if (trial not in trialfilter):
                     print("TRIAL NOT IN FILTER")
                     continue
-                try:
-                    if wallfilter(escape_obj.initial_conditions[trial][4]):
-                        print("INSIDE WALLFILTER")
-                        continue
-                except IndexError:
-                    pass
                 gf = escape_obj.pre_escape[trial]
                 # gf is grayframes (e.g. how many gray frames happened before the escape tap)
                 try:
@@ -253,8 +252,9 @@ class Condition_Collector:
             else:
                 self.included_fish.append(escape_obj.directory)
                 self.max_vel_average_per_fish.append(np.mean(max_velocities_per_trial))
-
-                
+                self.velocities_per_trial_per_fish.append(max_velocities_per_trial)
+                self.num_trials_per_fish.append(len(trialfilter))
+                self.escape_data['Total Valid Trials'] += len(trialfilter)
 
             # if len(escape_obj.numgrayframes) != 0:
             #     self.escape_data['Taps Per Entry Into Arena'].append(
@@ -1740,7 +1740,7 @@ def plot_varb_over_ecs(dv1, *dv2):
 def pairwise_l_to_n_PI(ec_left, ec_right):
     sb.set(style="ticks", rc={"lines.linewidth": 1})
     cp = sb.color_palette('husl', 8)
-    cp = ['k', 'k', 'k', 'k']
+   # cp = ['k', 'k', 'k', 'k']
     # quantify this using turns towards the ablated mauthner.
     # barrier on side of ablated mauthner vs opposite.
     fig, axes = pl.subplots(2, 2, sharey=True)
@@ -1800,13 +1800,13 @@ def pairwise_l_to_n_PI(ec_left, ec_right):
             n_right_mauth_bright.append(pi_control)
             l_right_mauth_bright.append(pi_bright)
             sb.lineplot(x=np.array([0, 1]), y=np.array([pi_control, pi_bright]),
-                        ax=axes[1, 0], markers=True, marker='.', color=cp[1], alpha=.1)
+                        ax=axes[1, 0], markers=True, marker='.', color=cp[3], alpha=.1)
       
         if math.isfinite(pi_bleft):
             n_right_mauth_bleft.append(pi_control)
             l_right_mauth_bleft.append(pi_bleft)
             sb.lineplot(x=np.array([0, 1]), y=np.array([pi_control, pi_bleft]),
-                        ax=axes[1, 1], markers=True, marker='.', color=cp[1], alpha=.1)
+                        ax=axes[1, 1], markers=True, marker='.', color=cp[3], alpha=.1)
 
 
 
@@ -1882,7 +1882,12 @@ def pairwise_l_to_n_PI(ec_left, ec_right):
 
     
     print(scipy.stats.ttest_rel(n_barrier_on_ablated_side, l_barrier_on_ablated_side))
+    print(np.mean(l_barrier_on_ablated_side))
+    print(np.mean(n_barrier_on_ablated_side))
+    print(scipy.stats.ttest_1samp(n_barrier_on_ablated_side, popmean=0))
     print(scipy.stats.ttest_rel(n_barrier_on_nonablated_side, l_barrier_on_nonablated_side))
+    print(np.mean(n_barrier_on_nonablated_side))
+    print(np.mean(l_barrier_on_nonablated_side))
 
     pl.show()
 
@@ -2542,7 +2547,8 @@ def correct_traj_by_visual_window(fishlist, div, mapfunc, conditions):
     pl.show()
     return total_correct_tlist
 
-
+# b/c you're seeing maxima at different times, you don't see the maxima in the waveform.
+# it'll fall out in the average over time. 
 def make_velocity_plots(ec_by_condition, ci):
 
     cpal = sb.color_palette('hls', 8)
@@ -2550,30 +2556,41 @@ def make_velocity_plots(ec_by_condition, ci):
     c1_vels = []
     c2_vels = []
     pairwise_max_vels = []
+    pairwise_max_vel_first_trials = []
     for ec1, ec2 in itz.zip_longest(ec_by_condition[0], ec_by_condition[1]):
         c1_vels += ec1.filtered_velocities
         c2_vels += ec2.filtered_velocities
+        t_per_fish1 = [0] + np.cumsum(ec1.num_trials_per_fish).tolist()
+        t_per_fish2 = [0] + np.cumsum(ec2.num_trials_per_fish).tolist()
+    #    c1_vels += [ec1.filtered_velocities[t] for t in t_per_fish1[:-1]]
+    #    c2_vels += [ec2.filtered_velocities[t] for t in t_per_fish2[:-1]]
 
-        for accepted_fish, avg_max_vel_1 in itz.zip_longest(ec1.included_fish, ec1.max_vel_average_per_fish):
+        for accepted_fish, avg_max_vel_1, max_vels_per_trial1 in itz.zip_longest(ec1.included_fish, ec1.max_vel_average_per_fish, ec1.velocities_per_trial_per_fish):
             if accepted_fish in ec2.included_fish:
                 vel_ind = ec2.included_fish.index(accepted_fish)
                 vel_pair = [avg_max_vel_1, ec2.max_vel_average_per_fish[vel_ind]]
+                max_vels_per_trial2 = ec2.velocities_per_trial_per_fish[vel_ind]
                 pairwise_max_vels.append(vel_pair)
+                vel_pair_first_trials = [np.mean(max_vels_per_trial1[0:1]),
+                                         np.mean(max_vels_per_trial2[0:1])]
+                pairwise_max_vel_first_trials.append(vel_pair_first_trials)
                 sb.lineplot(x=np.array([0, 1]), y=np.array(vel_pair),
                             ax=ax[1], markers=True, marker='.', color='k', alpha=.1)
+       #         sb.lineplot(x=np.array([0, 1]), y=np.array(vel_pair_first_trials),
+        #                    ax=ax[1], markers=True, marker='.', color='k', alpha=.1)
                 
     ts_plot(c1_vels, ax[0], cpal[0], ci)
     ts_plot(c2_vels, ax[0], 'k', ci)
-    l_velocities = [v[0] for v in pairwise_max_vels]
-    n_velocities = [v[1] for v in pairwise_max_vels]
+  #  l_velocities = [v[0] for v in pairwise_max_vels]
+  #  n_velocities = [v[1] for v in pairwise_max_vels]
+    l_velocities = [v[0] for v in pairwise_max_vel_first_trials]
+    n_velocities = [v[1] for v in pairwise_max_vel_first_trials]
     
     sb.pointplot(x=np.concatenate([np.zeros(len(l_velocities)),
                                    np.ones(len(n_velocities))]),
                  y=np.concatenate([l_velocities,
                                    n_velocities]), color='k', ax=ax[1], zorder=20)
-
-
-    
+    print(ttest_rel(l_velocities, n_velocities))
     pl.show()
 
 
@@ -2609,6 +2626,7 @@ def pairwise_light_dark(ec_fb):
                                  d_collisions]), color='k', ax=ax[1], zorder=20)
     print(ttest_rel(l_avoidance, d_avoidance))
     print(ttest_rel(l_collisions, d_collisions))
+    print(np.mean(l_collisions), np.mean(d_collisions))
     pl.show()
 
 
@@ -2629,7 +2647,7 @@ if __name__ == '__main__':
     # VIRTUAL BARRIERS
     virtual = ['091119_4', '091019_1', '091019_2', '091119_1', '091119_2',
                '091119_3', '091119_5', '091319_1', '091319_2', '091319_3',
-               '091319_4', '092719_1','092719_2', '092719_3', '092719_4',
+               '091319_4', '092719_1', '092719_2', '092719_3', '092719_4',
                '100219_1', '100219_2', '100219_3', '100219_4', '100219_6',
                '100219_7', '100219_5']
 
@@ -2638,6 +2656,8 @@ if __name__ == '__main__':
               '072419_4', '072419_5', '072419_6', '072419_7',
               '072419_8', '072419_9', '072519_1', '072619_1',
               '072619_2', '072619_3', '072619_4']
+
+    # [0, 0, 0, 
     
     four_b = ['022619_2', '030519_1', '030519_2', '030719_1',
               '030719_2', '030719_3', '032619_1', '032819_1',
@@ -2657,13 +2677,17 @@ if __name__ == '__main__':
                       '060321_4', '060321_5', '060321_6', '060321_7',
                       '060421_8', '061021_4', '061021_5']
     
+
+    # 0 is l first, 1 is n first
+    # [1, 1, 1, 1, 1, 1, 1, 1,  
+    
     red24mm_4mmdist = ['061121_1', '061121_2', '061121_3', '061121_4',
                        '061121_5', '061121_6', '061121_7', '061421_1',
                        '061421_2', '061421_3', 
                        '061521_2', '061521_3', '061521_4', '061521_5',
                        '061521_6']
 
-
+    
     red12mm_4mmdist = ["061721_1", "061721_2", "061721_3", "061721_4", "061721_5",
                        "061721_6", "061721_7", "061821_1", "061821_2", "061821_3", 
                        "061821_4", "061821_5", "061821_6",  "062221_1", "062221_2",
@@ -2714,7 +2738,7 @@ if __name__ == '__main__':
     white_and_virtual_list = [four_w, virtual, virtual]
     red_b_list = [four_b, red24mm_4mmdist, red12mm_4mmdist_2h, red12mm_4mmdist, red48mm_8mmdist_2h, red48mm_8mmdist]
      
-    viswin = 0
+    viswin = 25
 #    visfunc = lambda x: (-180 + viswin < x < -viswin) or (
  #       viswin < x < 180-viswin)
 
@@ -2734,6 +2758,14 @@ if __name__ == '__main__':
                                       [0, visfunc, 0])
     pairwise_l_to_n_PI(mauth_l_ec, mauth_r_ec)
 
+
+    combined_hairplot([mauth_l_ec[0]], 0, 0, .7)
+    combined_hairplot([mauth_r_ec[0]], 0, 0, .7)
+    combined_hairplot([mauth_l_ec[1]], 0, 0, .7)
+    combined_hairplot([mauth_r_ec[1]], 0, 0, .7)
+    
+    
+
     mauth_r_ltp = collect_varb_across_ec(
         [wik_mauthner_r], 'n', 'Left Traj Percentage', [0, visfunc, 0])
 
@@ -2743,10 +2775,13 @@ if __name__ == '__main__':
     all_ltp = collect_varb_across_ec(red_b_list+white_and_virtual_list[0:2],
                                      'n', 'Left Traj Percentage', [0, visfunc, 1])
 
+   
+
+    
     ltp_PI = list(map(lambda x: -1*(2*x - 1), np.concatenate(all_ltp)))
-    mauthner_l_PI = list(map(lambda x: -1*(2*x - 1), mauth_l_ltp[0]))
-#    mauthner_r_PI = list(map(lambda x: -1*(2*x - 1), mauth_r_ltp[0]))
-    mauthner_r_PI = list(map(lambda x: (2*x - 1), mauth_r_ltp[0]))
+    mauthner_l_PI = list(map(lambda x: (2*x - 1), mauth_l_ltp[0]))
+    mauthner_r_PI = list(map(lambda x: -1*(2*x - 1), mauth_r_ltp[0]))
+#    mauthner_r_PI = list(map(lambda x: (2*x - 1), mauth_r_ltp[0]))
     mauthner_all = mauthner_l_PI + mauthner_r_PI
     cpal = sb.color_palette('husl', 8)
     cpal2 = sb.color_palette('hls', 8)
@@ -2754,12 +2789,12 @@ if __name__ == '__main__':
     sb.set(style="ticks", rc={"lines.linewidth": 1})
     sb.kdeplot(ltp_PI,
                color=cpal2[0], clip=[-1, 1], ax=ax)
-#    sb.kdeplot(mauthner_l_PI,
- #              clip=[-1, 1], ax=ax, color=cpal[3])
-#    sb.kdeplot(mauthner_r_PI, 
- #              clip=[-1, 1], ax=ax, color=cpal[1])
-    sb.kdeplot(mauthner_all, 
+    sb.kdeplot(mauthner_l_PI,
+               clip=[-1, 1], ax=ax, color=cpal[3])
+    sb.kdeplot(mauthner_r_PI, 
                clip=[-1, 1], ax=ax, color=cpal[1])
+ #   sb.kdeplot(mauthner_all, 
+  #             clip=[-1, 1], ax=ax, color=cpal[1])
 
     pl.show()
     ax.set_xlim([-1, 1])
@@ -2784,8 +2819,8 @@ if __name__ == '__main__':
 #     hairplot_collisionmap(ec_fourb[0], ec_fourb[1], 1)
 
 #    vb = correct_traj_by_visual_window(four_b + four_w, 15, lambda x: 2*x - 1, ['l', 'd'])
-    vb = correct_traj_by_visual_window(four_b, 15, lambda x: 2*x - 1, ['l', 'd'])
-    vw = correct_traj_by_visual_window(four_w, 15, lambda x: 2*x - 1, ['l'])
+    vb = correct_traj_by_visual_window(four_b, 25, lambda x: 2*x - 1, ['l', 'd'])
+    vw = correct_traj_by_visual_window(four_w, 25, lambda x: 2*x - 1, ['l'])
 
 
 #    vb = correct_traj_by_visual_window(four_b, 25, lambda x: 2*x - 1, ['l', 'd'])
@@ -2799,11 +2834,12 @@ if __name__ == '__main__':
 # #     # wondered whether the correct trajectory rate held across retinal occupancies. It didn't.
 # #     # We used the 20 window. Show heatplots for all of these. 
 
-
+    # each virtual fish is used for red and white trials, so only use white and one virtual for n trials
     all_n_coords, all_n_ec = get_n_trajectories(red_b_list + white_and_virtual_list[0:2])
     # args are order by length, invert by barrier, and alpha
     ltp_n = combined_hairplot(all_n_ec, 0, 0, .7)
 
+    # first arg is order by length. second is flip over the midline
     combined_hairplot([ec_fourb[2]], 0, 0, .7)
     combined_hairplot([ec_fourb[0]], 0, 1, .7)
     combined_hairplot([ec_fourb[1]], 1, 1, .7)
@@ -2813,9 +2849,10 @@ if __name__ == '__main__':
 
     
 #     fishlist = red_b_list + four_w
-    # collision_stats, num_n_trials = infer_collisions(red_b_list+white_and_virtual_list[0:2],
-    #                                                   False, viswin)
-    # plot_collision_stat(collision_stats, num_n_trials)
+    collision_stats, num_n_trials = infer_collisions(red_b_list+white_and_virtual_list[0:2],
+                                                     False, viswin)
+    collision_percentage_by_fish = plot_collision_stat(collision_stats, num_n_trials)
+    avg_collision_percentage = [np.mean(x) for x in collision_percentage_by_fish]
     
 # # # used to test stim and cstart detection -- perfect! 
 # # #    four_b_1 = ['022619_2', '030519_1']
@@ -2840,14 +2877,23 @@ if __name__ == '__main__':
                                               ['l', 'n'], [0, visfunc, 1])
     plot_all_results(red48mm_8mmdist_ec)
 
-
     make_velocity_plots([[ec_fourb[0], red12mm_4mmdist_ec[0], red12mm_4mmdist_ec_2h[0], red24mm_4mmdist_ec[0]],
                         [ec_fourb[2], red12mm_4mmdist_ec[1], red12mm_4mmdist_ec_2h[1], red24mm_4mmdist_ec[1]]], 95)
+
+    make_velocity_plots([[ec_fourb[0], red12mm_4mmdist_ec[0], red12mm_4mmdist_ec_2h[0], red24mm_4mmdist_ec[0],
+                         red48mm_8mmdist_ec_2h[0], red48mm_8mmdist_ec[0]],
+                        [ec_fourb[2], red12mm_4mmdist_ec[1], red12mm_4mmdist_ec_2h[1], red24mm_4mmdist_ec[1],
+                         red48mm_8mmdist_ec_2h[1], red48mm_8mmdist_ec[1]]]
+                        , 95)
+
 
     make_velocity_plots([[red48mm_8mmdist_ec_2h[0], red48mm_8mmdist_ec[0]],
                           [red48mm_8mmdist_ec_2h[1], red48mm_8mmdist_ec[1]]], 95)
     
+    
+    
 
+    
 # #    
 
 # #     collect_collision_stat(fishlist, 'l', np.ones(len(fishlist)), [0, visfunc, 1])
@@ -2866,6 +2912,10 @@ if __name__ == '__main__':
                        [white_and_virtual_bright, lambda x: -1*(2*x - 1)])
 
     plot_varb_over_ecs([white_and_virtual_correct, lambda x: 2*x -1])
+    white_and_virtual_AI = [list(map(lambda x: (2*x - 1), ai)) for ai in white_and_virtual_correct]
+    white_and_virtual_AI_avg = list(map(np.mean, white_and_virtual_AI))
+    
+    
 
     red_bleft = collect_varb_across_ec(red_b_list, 'l', 'Correct Trajectory Percentage BLeft', [0, visfunc, 1])
 
@@ -2873,13 +2923,26 @@ if __name__ == '__main__':
 
     red_correct = collect_varb_across_ec(red_b_list, 'l', 'Correct Trajectory Percentage', [0, visfunc, 1])
 
+    dark_correct = collect_varb_across_ec([four_b],
+                                          'd', 'Left Traj Percentage', [0, visfunc, 1])
+
+
     plot_varb_over_ecs([red_bleft, lambda x: (2*x -1)],
                        [red_bright, lambda x: -1*(2*x - 1)])
 
     correct_pi = plot_varb_over_ecs([red_correct, lambda x: 2*x -1])
 
+    red_AI = [list(map(lambda x: (2*x - 1), ai)) for ai in red_correct]
+    dark_AI = list(map(lambda x: (2*x - 1), dark_correct[0]))
+    dark_AI_ttest = scipy.stats.ttest_1samp(dark_AI, popmean=0)
+    
+
+    
+    red_AI_avg = list(map(np.mean, red_AI))
+
     cstart_latencies = collect_varb_across_ec(red_b_list, 'l', 'CStart Latency', [0, visfunc, 1])
     cstart_amplitudes = collect_varb_across_ec(red_b_list, 'l', 'CStart Angle', [0, visfunc, 1])
+    
     sb.distplot(2*np.concatenate(cstart_latencies), bins=10)
     pl.show()
     sb.distplot(np.concatenate(cstart_amplitudes), bins=10)
@@ -2893,10 +2956,32 @@ if __name__ == '__main__':
 
     # USE TTEST_1SAMP W POP MEAN 0.
 
-    ttest_results = [scipy.stats.ttest_1samp(list(map(lambda x: (2*x -1), a)), popmean=0) for a in red_correct]
-    
+    ttest_white = [scipy.stats.ttest_1samp(list(map(lambda x: (2*x -1), a)), popmean=0) for a in white_and_virtual_correct]
 
+    white_vs_red = scipy.stats.ttest_ind(list(map(lambda x:(2*x -1), white_and_virtual_correct[0])),
+                                         list(map(lambda x:(2*x -1), red_correct[0])))
+  
+
+    ttest_results = [scipy.stats.ttest_1samp(list(map(lambda x: (2*x -1), a)), popmean=0) for a in red_correct]
+    ttest_24mm_4mm_vs_48mm_8mm_2h = scipy.stats.ttest_ind(list(map(lambda x:(2*x -1), red_correct[1])),
+                                                          list(map(lambda x:(2*x -1), red_correct[4])))
     
+    avg_latency = np.mean(2*np.concatenate(cstart_latencies))
+    avg_turn = np.mean(np.concatenate(cstart_amplitudes))
+
+    red_ec_list = [ec_fourb[0], red12mm_4mmdist_ec[0], red12mm_4mmdist_ec_2h[0], red24mm_4mmdist_ec[0],
+                   red48mm_8mmdist_ec_2h[0], red48mm_8mmdist_ec[0]]
+
+    total_trials = [r.escape_data["Total Valid Trials"] for r in red_ec_list]
+    total_cstarts = [r.escape_data["Total CStarts"] for r in red_ec_list]
+    all_cstarts_angle = [r.escape_data["CStart Angle"] for r in red_ec_list]
+    
+    cstart_correct = collect_varb_across_ec(red_b_list, 'l', 'Correct CStart Percentage', [0, visfunc, 1])
+
+    plot_varb_over_ecs([cstart_correct, lambda x: (2*x -1)])
+    ttest_results_cstart = [scipy.stats.ttest_1samp(list(map(lambda x: (2*x -1), a)), popmean=0) for a in cstart_correct]
+
+    total_fish_n = [len(f.included_fish) for f in all_n_ec]
 
 # # #    
     

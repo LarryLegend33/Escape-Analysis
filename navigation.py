@@ -90,10 +90,16 @@ def proximity_histogram(nav_list, condition, b_color, *norm_max):
         nav_object_collection.append(nav_object)
         density = np.histogram2d(np.array(nav_object.coords_wrt_closest_barrier)[:, 0],
                                  np.array(nav_object.coords_wrt_closest_barrier)[:, 1],
-                                 range=[[-bound, bound], [-bound, bound]])[0]
+                                 range=[[-bound, bound], [-bound, bound]], bins=[10, 10])[0]
         dim = density.shape[0]
-        barrier_prox_stat = np.sum(density[int(dim/2) - int(dim / 5):int(dim/2) + int(dim/5), int(dim/2) - int(dim / 5):
-                                       int(dim/2) + int(dim/5)]) / np.sum(density)
+        # split the grid into a 8 x 8 grid, meaning 50 pix per bin. take the bin
+        # on either side of the center (the 3rd index and 4th index; so index to the fifth)
+
+
+        print(density.shape)
+        print("DENSITY")
+        barrier_prox_stat = np.sum(density[int(dim/2) - 2:int(dim/2) + 3, int(dim/2) - 2:
+                                           int(dim/2) + 3]) / np.sum(density)
         barrier_prox_stats.append(barrier_prox_stat)
 
     # here do the proximity calculation below. do it on a binsize basis per fish.
@@ -557,9 +563,9 @@ blackandred_b = ["061219_2", "061219_3", "061219_4",
 
 navs_white, density_w, bprox_w = proximity_histogram(white_b, exp_type, [1, 1, 1])
 navs_red, density_r, bprox_r = proximity_histogram(red_b, exp_type, [1, 0, 0], np.max(density_w))
-xs = np.zeros(len(bprox_w)).tolist() + np.ones(len(bprox_r)).tolist()
-sb.barplot(xs, bprox_w + bprox_r, color='gray')
-ttest_results = scipy.stats.ttest_ind(bprox_w, bprox_r)
+xs = np.zeros(len(bprox_r)).tolist() + np.ones(len(bprox_w)).tolist()
+sb.barplot(xs, bprox_r + bprox_w, color='gray')
+ttest_results = scipy.stats.ttest_ind(bprox_r, bprox_w)
 
 #navs_big = proximity_calculator(red_2xheight_4xwide, exp_type, [1, 0, 0])  #, navs_white[1])
 
