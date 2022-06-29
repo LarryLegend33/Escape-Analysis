@@ -1791,6 +1791,7 @@ def pairwise_l_to_n_per_barrierside(ec_list, threshold_function):
     print(scipy.stats.wilcoxon(n_bleft, l_bleft))
     print(scipy.stats.wilcoxon(n_bright, l_bright))
     pl.show()
+    return n_bleft, n_bright, l_bleft, l_bright
 
 
 
@@ -2607,7 +2608,8 @@ def correct_traj_by_visual_window(fishlist, div, mapfunc, conditions):
             p_color = 'gold'
         else:
             p_color = 'silver'
-        sns.lineplot(x=xv_concat, y=yvals, color=p_color, ax=ax[0])
+#        sns.lineplot(x=xv_concat, y=yvals, color=p_color, ax=ax[0])
+        sns.lineplot(x=xv_concat, y=yvals, color=p_color, ax=ax[0], estimator=np.median)
         ax[1].plot(total_correct_trials, color=p_color)
         total_correct_tlist.append(total_correct_trials)
     sns.despine()
@@ -2857,10 +2859,6 @@ if __name__ == '__main__':
     sns.kdeplot(ltp_PI,
                color=cpal2[0], clip=[-1, 1], ax=ax)
 
-
-
-
-                       
     sns.kdeplot(mauthner_l_PI,
                clip=[-1, 1], ax=ax, color=cpal[3])
     sns.kdeplot(mauthner_r_PI, 
@@ -2926,10 +2924,6 @@ if __name__ == '__main__':
 
     
 #     fishlist = red_b_list + four_w
-    collision_stats, num_n_trials = infer_collisions(red_b_list+white_and_virtual_list[0:2],
-                                                     False, viswin)
-    collision_percentage_by_fish = plot_collision_stat(collision_stats, num_n_trials)
-    avg_collision_percentage = [np.mean(x) for x in collision_percentage_by_fish]
     
 # # # used to test stim and cstart detection -- perfect! 
 # # #    four_b_1 = ['022619_2', '030519_1']
@@ -2968,8 +2962,21 @@ if __name__ == '__main__':
                           [red48mm_8mmdist_ec_2h[1], red48mm_8mmdist_ec[1]]], 95)
     
     
-    
 
+    q25_ntrials = PI_iqls[0][1]
+    q75_ntrials = PI_iqls[0][3]
+    q25_vs_barrier = pairwise_l_to_n_per_barrierside(
+        [ec_fourb, red24mm_4mmdist_ec], lambda x: x < q25_ntrials)
+    q75_vs_barrier = pairwise_l_to_n_per_barrierside(
+        [ec_fourb, red24mm_4mmdist_ec], lambda x: x > q75_ntrials)
+
+    n_pi_magnitude_outerQs = q25_vs_barrier[0] + list(-1*np.array(q75_vs_barrier[1]))
+    l_pi_magnitude_outerQs = q25_vs_barrier[2] + list(-1*np.array(q75_vs_barrier[3]))
+    
+    
+    wilcoxon_test_outerQs = scipy.stats.wilcoxon(n_pi_magnitude_outerQs, l_pi_magnitude_outerQs)
+    iq_vs_barrier_medians = list(map(np.median, [q25_vs_barrier[0], q25_vs_barrier[2], q75_vs_barrier[1], q75_vs_barrier[3]]))
+    # N=14 fish pooled. Woot woot. .0001 wilcoxon. 
     
 # #    
 
@@ -3057,7 +3064,8 @@ if __name__ == '__main__':
     avg_latency = np.mean(2*np.concatenate(cstart_latencies))
     avg_turn = np.mean(np.concatenate(cstart_amplitudes))
 
-    red_ec_list = [ec_fourb[0], red12mm_4mmdist_ec[0], red12mm_4mmdist_ec_2h[0], red24mm_4mmdist_ec[0],
+    red_ec_list = [ec_fourb[0], red24mm_4mmdist_ec[0], red12mm_4mmdist_ec_2h[0],
+                   red12mm_4mmdist_ec[0], 
                    red48mm_8mmdist_ec_2h[0], red48mm_8mmdist_ec[0]]
 
     total_trials = [r.escape_data["Total Valid Trials"] for r in red_ec_list]
@@ -3071,6 +3079,12 @@ if __name__ == '__main__':
     wilcoxon_results_cstart = [scipy.stats.wilcoxon(list(map(lambda x: (2*x -1), a))) for a in cstart_correct]
 
     total_fish_n = [len(f.included_fish) for f in all_n_ec]
+
+    collision_stats, num_n_trials = infer_collisions(red_b_list+white_and_virtual_list[0:2],
+                                                     False, viswin)
+    collision_percentage_by_fish = plot_collision_stat(collision_stats, num_n_trials)
+    avg_collision_percentage = [np.mean(x) for x in collision_percentage_by_fish]
+
 
 # # #    
     
