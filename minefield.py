@@ -5,7 +5,7 @@ from matplotlib import pyplot as pl
 from matplotlib.cm import ScalarMappable
 from matplotlib.collections import LineCollection
 from matplotlib import colors
-import seaborn as sb
+import seaborn as sns
 import copy
 import cv2
 import toolz
@@ -39,7 +39,7 @@ import matplotlib
 # and plotting the escape trajectory relative to a barrier position
 
 
-# Next thing to do is figure out where to compare the previousbouts to trajectory directions.
+# Next thing to do is figure out where to compare the previousns.uts to trajectory directions.
 # Not so easy in current setup. i think bl_trials and br_trials will work.
 # index those in a listcomp and grab the sign of the last N bouts. see if the directions are correlated,
 # but probably exclude if the prevbout angle is straight. cite eva for turn mag. 
@@ -61,9 +61,9 @@ def ts_plot(list_of_lists, ax, cl, *ci_input):
                'y': value_list}
     df = pd.DataFrame(df_dict)
     if ci_input != ():
-        sb.lineplot(data=df, x='x', y='y', ax=ax, ci=ci_input[0], color=cl)  #, color='deeppink')
+        sns.lineplot(data=df, x='x', y='y', ax=ax, ci=ci_input[0], color=cl, estimator=np.median)  #, color='deeppink')
     else:
-        sb.lineplot(data=df, x='x', y='y', ax=ax, color=cl)
+        sns.lineplot(data=df, x='x', y='y', ax=ax, color=cl, estimator=np.median)
    # pl.show()
     return df
 
@@ -108,7 +108,7 @@ class Condition_Collector:
         self.filter_index = 0
         self.filter_by_led = True
         self.filter_by_numtrials = True
-        # here change filter index to 1 for mag, 0 for hvsb.
+        # here change filter index to 1 for mag, 0 for hvsns.
         # set heading vs barrier to pos or neg.
         # filter_index 0 is h_vs_b. if neg, barrier is on left.
         # self.filter_range = [90, 200]
@@ -1597,7 +1597,9 @@ def plot_collision_stat(all_collisions, num_n_trials):
         xvals.append(i*np.ones(len(d)))
         xv_concat = np.concatenate(xvals)
         yvals = np.concatenate(collision_stats_to_percentage)
-    sb.pointplot(x=xv_concat, y=yvals, color='k')
+#    sns.pointplot(x=xv_concat, y=yvals, color='k')
+    sns.pointplot(x=xv_concat, y=yvals, color='k', estimator=np.median)
+    sns.barplot(x=xv_concat, y=yvals, color='k', estimator=np.median)
     pl.show()
     return collision_stats_to_percentage
     
@@ -1683,7 +1685,7 @@ def collect_varb_across_ec(fishlist, cond, varb, filt):
 
     # come up with metric for collision normalization. use cstart bias plus collision rate. 
     return data_for_varb
-#    sb.boxplot(x=range(len(data_for_varb)), y=data_for_varb)
+#    sns.boxplot(x=range(len(data_for_varb)), y=data_for_varb)
 #    pl.show()
 
 # lambda x: -1*(2*x - 1) will be the mapfunction for barrier on right
@@ -1695,7 +1697,7 @@ def collect_varb_across_ec(fishlist, cond, varb, filt):
 
 def plot_varb_over_ecs(dv1, *dv2):
     fig, ax = pl.subplots(1, 1, figsize=(4, 1))
-    sb.set(style="ticks", rc={"lines.linewidth": .75})
+    sns.set(style="ticks", rc={"lines.linewidth": .75})
     if dv2 != ():
         dv2, mapfunc2 = dv2[0]
         xvals2 = []
@@ -1703,8 +1705,9 @@ def plot_varb_over_ecs(dv1, *dv2):
             xvals2.append(i*np.ones(len(d)))
         xv_concat2 = np.concatenate(xvals2)
         yvals2 = list(map(mapfunc2, np.concatenate(dv2)))
-        sb.pointplot(x=xv_concat2, y=yvals2, color='dodgerblue', markers='s')
- #       sb.stripplot(x=xv_concat2, y=yvals2, dodge=False, alpha=.2, zorder=0, jitter=.005, color='deeppink')
+        sns.pointplot(x=xv_concat2, y=yvals2, color='dodgerblue', markers='s')
+        sns.barplot(x=xv_concat2, y=yvals2, color='dodgerblue', estimator=np.nanmedian)
+ #       sns.stripplot(x=xv_concat2, y=yvals2, dodge=False, alpha=.2, zorder=0, jitter=.005, color='deeppink')
     dv, mapfunc = dv1
     xvals = []
     print(dv)
@@ -1713,11 +1716,13 @@ def plot_varb_over_ecs(dv1, *dv2):
     xv_concat = np.concatenate(xvals)
     yvals = list(map(mapfunc, np.concatenate(dv)))
     if dv2 == ():
-        sb.pointplot(x=xv_concat, y=yvals, color='gray', markers='s')
+        sns.pointplot(x=xv_concat, y=yvals, color='gray', markers='s')
+        sns.barplot(x=xv_concat, y=yvals, color='gray', estimator=np.nanmedian)        
     else:
-        sb.pointplot(x=xv_concat, y=yvals, color='deeppink', markers='s')
-#    sb.stripplot(x=xv_concat, y=yvals, dodge=False, alpha=.2, zorder=0, jitter=.005, color='dodgerblue')
-    sb.despine()
+        sns.pointplot(x=xv_concat, y=yvals, color='deeppink', markers='s')
+        sns.barplot(x=xv_concat, y=yvals, color='deeppink', estimator=np.nanmedian)        
+#    sns.stripplot(x=xv_concat, y=yvals, dodge=False, alpha=.2, zorder=0, jitter=.005, color='dodgerblue')
+    sns.despine()
     pl.show()
 
 
@@ -1736,10 +1741,63 @@ def plot_varb_over_ecs(dv1, *dv2):
 
 # add ECs with l and n trials
 
+
+def pairwise_l_to_n_per_barrierside(ec_list, threshold_function):
+    sns.set(style="ticks", rc={"lines.linewidth": 1})
+    cp = sns.color_palette('husl', 1)
+    fig, axes = pl.subplots(2, 1, sharey=True)
+    n_bleft = []
+    n_bright = []
+    l_bleft = []
+    l_bright = []
+    for ec in ec_list:
+        for fish_ind, fish in enumerate(ec[0].included_fish):
+            try:
+                n_trial_index = ec[1].included_fish.index(fish)
+            except ValueError:
+                print("VAL ERROR")
+                continue
+            # these values will give you the PI for going right vs. left, and then the
+            # PI for going right vs left given two barrier cond
+            pi_bright = -1 * (2 * ec[0].escape_data['Correct Trajectory Percentage BRight'][fish_ind] - 1)
+            pi_bleft = 2 * ec[0].escape_data['Correct Trajectory Percentage BLeft'][fish_ind] - 1
+            pi_control = -1 * (2 * ec[1].escape_data['Left Traj Percentage'][n_trial_index] - 1)
+            # this line will rule out any prefence index outside of a given value in controls to allow us to obtain biased n fish. 
+            if not threshold_function(pi_control):
+                continue
+            if math.isfinite(pi_bright):
+                sns.lineplot(x=np.array([0, 1]), y=np.array([pi_control, pi_bright]),
+                        ax=axes[0], markers=True, marker='.', color='gray', alpha=0.1)
+                n_bright.append(pi_control)
+                l_bright.append(pi_bright)
+      
+            if math.isfinite(pi_bleft):
+                sns.lineplot(x=np.array([0, 1]), y=np.array([pi_control, pi_bleft]),
+                        ax=axes[1], markers=True, marker='.', color='gray', alpha=.1)
+                n_bleft.append(pi_control)
+                l_bleft.append(pi_bleft)
+      
+
+    sns.pointplot(x=np.concatenate([np.zeros(len(n_bright)),
+                                    np.ones(len(l_bright))]),
+                  y=np.concatenate([n_bright,
+                                    l_bright]), color='k',
+                  ax=axes[0], zorder=20, estimator=np.median)
+    sns.pointplot(x=np.concatenate([np.zeros(len(n_bleft)),
+                                    np.ones(len(l_bleft))]),
+                  y=np.concatenate([n_bleft,
+                                    l_bleft]), color='k',
+                  ax=axes[1], zorder=20, estimator=np.median)
+    print(scipy.stats.wilcoxon(n_bleft, l_bleft))
+    print(scipy.stats.wilcoxon(n_bright, l_bright))
+    pl.show()
+
+
+
     
-def pairwise_l_to_n_PI(ec_left, ec_right):
-    sb.set(style="ticks", rc={"lines.linewidth": 1})
-    cp = sb.color_palette('husl', 8)
+def pairwise_l_to_n_PI_mauth(ec_left, ec_right):
+    sns.set(style="ticks", rc={"lines.linewidth": 1})
+    cp = sns.color_palette('husl', 8)
    # cp = ['k', 'k', 'k', 'k']
     # quantify this using turns towards the ablated mauthner.
     # barrier on side of ablated mauthner vs opposite.
@@ -1773,14 +1831,15 @@ def pairwise_l_to_n_PI(ec_left, ec_right):
         if math.isfinite(pi_bright):
             n_left_mauth_bright.append(pi_control)
             l_left_mauth_bright.append(pi_bright)
-            sb.lineplot(x=np.array([0, 1]), y=np.array([pi_control, pi_bright]),
+            sns.lineplot(x=np.array([0, 1]), y=np.array([pi_control, pi_bright]),
                         ax=axes[0, 0], markers=True, marker='.', color=cp[3], alpha=0.1)
       
         if math.isfinite(pi_bleft):
             n_left_mauth_bleft.append(pi_control)
             l_left_mauth_bleft.append(pi_bleft)
-            sb.lineplot(x=np.array([0, 1]), y=np.array([pi_control, pi_bleft]),
+            sns.lineplot(x=np.array([0, 1]), y=np.array([pi_control, pi_bleft]),
                         ax=axes[0, 1], markers=True, marker='.', color=cp[3], alpha=.1)
+            
 
     for fish_ind, fish in enumerate(ec_right[0].included_fish):
         try:
@@ -1799,41 +1858,40 @@ def pairwise_l_to_n_PI(ec_left, ec_right):
         if math.isfinite(pi_bright):
             n_right_mauth_bright.append(pi_control)
             l_right_mauth_bright.append(pi_bright)
-            sb.lineplot(x=np.array([0, 1]), y=np.array([pi_control, pi_bright]),
-                        ax=axes[1, 0], markers=True, marker='.', color=cp[3], alpha=.1)
+            sns.lineplot(x=np.array([0, 1]), y=np.array([pi_control, pi_bright]),
+                         ax=axes[1, 0], markers=True, marker='.', color=cp[3], alpha=.1, estimator=np.median)
       
         if math.isfinite(pi_bleft):
             n_right_mauth_bleft.append(pi_control)
             l_right_mauth_bleft.append(pi_bleft)
-            sb.lineplot(x=np.array([0, 1]), y=np.array([pi_control, pi_bleft]),
-                        ax=axes[1, 1], markers=True, marker='.', color=cp[3], alpha=.1)
+            sns.lineplot(x=np.array([0, 1]), y=np.array([pi_control, pi_bleft]),
+                         ax=axes[1, 1], markers=True, marker='.', color=cp[3], alpha=.1, estimator=np.median)
 
 
 
 #    fig2, axes2 = pl.subplots(1, 2, sharey=True)
-    sb.pointplot(x=np.concatenate([np.zeros(len(n_left_mauth_bright)),
+    sns.pointplot(x=np.concatenate([np.zeros(len(n_left_mauth_bright)),
                                    np.ones(len(l_left_mauth_bright))]),
                  y=np.concatenate([n_left_mauth_bright,
-                                   l_left_mauth_bright]), color='k', ax=axes[0, 0], zorder=20)
-    sb.pointplot(x=np.concatenate([np.zeros(len(n_left_mauth_bleft)),
+                                   l_left_mauth_bright]), color='k', ax=axes[0, 0], zorder=20, estimator=np.median)
+    sns.pointplot(x=np.concatenate([np.zeros(len(n_left_mauth_bleft)),
                                    np.ones(len(l_left_mauth_bleft))]),
                  y=np.concatenate([n_left_mauth_bleft,
-                                   l_left_mauth_bleft]), color='k', ax=axes[0, 1], zorder=20)
-    sb.pointplot(x=np.concatenate([np.zeros(len(n_right_mauth_bright)),
+                                   l_left_mauth_bleft]), color='k', ax=axes[0, 1], zorder=20, estimator=np.median)
+    sns.pointplot(x=np.concatenate([np.zeros(len(n_right_mauth_bright)),
                                    np.ones(len(l_right_mauth_bright))]),
                  y=np.concatenate([n_right_mauth_bright,
-                                   l_right_mauth_bright]), color='k', ax=axes[1, 0], zorder=20)
-    sb.pointplot(x=np.concatenate([np.zeros(len(n_right_mauth_bleft)),
+                                   l_right_mauth_bright]), color='k', ax=axes[1, 0], zorder=20, estimator=np.median)
+    sns.pointplot(x=np.concatenate([np.zeros(len(n_right_mauth_bleft)),
                                    np.ones(len(l_right_mauth_bleft))]),
                  y=np.concatenate([n_right_mauth_bleft,
-                                   l_right_mauth_bleft]), color='k', ax=axes[1, 1], zorder=20)
+                                   l_right_mauth_bleft]), color='k', ax=axes[1, 1], zorder=20, estimator=np.median)
 
-    sb.despine()
+    sns.despine()
 
 
     fig2, axes2 = pl.subplots(2, 1, sharey=True)
 
-           
     # you have L fish and R fish. combine them.
     # right_mauth_bleft == left_mauth_bright
     # right_mauth_bright == left_mauth_bleft
@@ -1854,7 +1912,7 @@ def pairwise_l_to_n_PI(ec_left, ec_right):
             curr_color = cp[3]
         else:
             curr_color = cp[1]
-        sb.lineplot(x=np.array([0, 1]), y=np.array([pi_control, pi_barr]),
+        sns.lineplot(x=np.array([0, 1]), y=np.array([pi_control, pi_barr]),
                     ax=axes2[0], markers=True, marker='.', color=curr_color, alpha=0.1)
 
     for i, (pi_barr, pi_control) in enumerate(zip(l_barrier_on_nonablated_side, n_barrier_on_nonablated_side)):
@@ -1862,17 +1920,17 @@ def pairwise_l_to_n_PI(ec_left, ec_right):
             curr_color = cp[3]
         else:
             curr_color = cp[1]
-        sb.lineplot(x=np.array([0, 1]), y=np.array([pi_control, pi_barr]),
+        sns.lineplot(x=np.array([0, 1]), y=np.array([pi_control, pi_barr]),
                     ax=axes2[1], markers=True, marker='.', color=curr_color, alpha=0.1)
         
-    sb.pointplot(x=np.concatenate([np.zeros(len(n_barrier_on_ablated_side)),
+    sns.pointplot(x=np.concatenate([np.zeros(len(n_barrier_on_ablated_side)),
                                    np.ones(len(l_barrier_on_ablated_side))]),
                  y=np.concatenate([n_barrier_on_ablated_side,
-                                   l_barrier_on_ablated_side]), color='k', ax=axes2[0], zorder=20)
-    sb.pointplot(x=np.concatenate([np.zeros(len(n_barrier_on_nonablated_side)),
+                                   l_barrier_on_ablated_side]), color='k', ax=axes2[0], zorder=20, estimator=np.median)
+    sns.pointplot(x=np.concatenate([np.zeros(len(n_barrier_on_nonablated_side)),
                                    np.ones(len(l_barrier_on_nonablated_side))]),
                  y=np.concatenate([n_barrier_on_nonablated_side,
-                                   l_barrier_on_nonablated_side]), color='k', ax=axes2[1], zorder=20)
+                                   l_barrier_on_nonablated_side]), color='k', ax=axes2[1], zorder=20, estimator=np.median)
         
 #    axes[0, 0].set_ylim([0, 1.2])
     print(scipy.stats.ttest_rel(n_left_mauth_bright, l_left_mauth_bright))
@@ -1880,14 +1938,26 @@ def pairwise_l_to_n_PI(ec_left, ec_right):
     print(scipy.stats.ttest_rel(n_right_mauth_bright, l_right_mauth_bright))
     print(scipy.stats.ttest_rel(n_right_mauth_bleft, l_right_mauth_bleft))
 
-    
+    print(scipy.stats.wilcoxon(n_left_mauth_bright, l_left_mauth_bright))
+    print(scipy.stats.wilcoxon(n_left_mauth_bleft, l_left_mauth_bleft))
+    print(scipy.stats.wilcoxon(n_right_mauth_bright, l_right_mauth_bright))
+    print(scipy.stats.wilcoxon(n_right_mauth_bleft, l_right_mauth_bleft))
+
     print(scipy.stats.ttest_rel(n_barrier_on_ablated_side, l_barrier_on_ablated_side))
+    print(scipy.stats.wilcoxon(n_barrier_on_ablated_side, l_barrier_on_ablated_side))
     print(np.mean(l_barrier_on_ablated_side))
     print(np.mean(n_barrier_on_ablated_side))
+    print(np.median(l_barrier_on_ablated_side))
+    print(np.median(n_barrier_on_ablated_side))
     print(scipy.stats.ttest_1samp(n_barrier_on_ablated_side, popmean=0))
+    print(scipy.stats.wilcoxon(n_barrier_on_ablated_side))
     print(scipy.stats.ttest_rel(n_barrier_on_nonablated_side, l_barrier_on_nonablated_side))
+    print(scipy.stats.wilcoxon(n_barrier_on_nonablated_side, l_barrier_on_nonablated_side))
+    
     print(np.mean(n_barrier_on_nonablated_side))
     print(np.mean(l_barrier_on_nonablated_side))
+    print(np.median(n_barrier_on_nonablated_side))
+    print(np.median(l_barrier_on_nonablated_side))
 
     pl.show()
 
@@ -1911,7 +1981,7 @@ def hairplot_heatmap(ec_list, *combine_maps):
     traj_end = 50
     startleave = 2
     interpolate_by = 1000
-#    cmap = sb.color_palette('Reds', as_cmap=True)
+#    cmap = sns.color_palette('Reds', as_cmap=True)
     cmap = 'inferno'
     bleft_matrix = np.zeros([hm_bins_x, hm_bins_y])
     bright_matrix = np.zeros([hm_bins_x, hm_bins_y])
@@ -2066,7 +2136,7 @@ def combined_hairplot(ec_list, sort_by_len, invert, alphaval):
                  colors='lightgray', linestyles='dashed')
     ax[1,1].set_facecolor('k')
 
-    sb.despine()
+    sns.despine()
     pl.tight_layout()
     pl.show()
     total_fish = np.sum([len(x) for x in left_turn_percentage])
@@ -2074,8 +2144,8 @@ def combined_hairplot(ec_list, sort_by_len, invert, alphaval):
     print(total_fish)
 
     fig2, ax2 = pl.subplots(1, 1)
-#    sb.kdeplot(np.concatenate(left_turn_percentage), clip=[0, 1], ax=ax2, color='pink')
-    sb.distplot(np.concatenate(left_turn_percentage), ax=ax2, color='dodgerblue', bins=5)
+#    sns.kdeplot(np.concatenate(left_turn_percentage), clip=[0, 1], ax=ax2, color='pink')
+    sns.distplot(np.concatenate(left_turn_percentage), ax=ax2, color='dodgerblue', bins=5)
     pl.show()
     return np.concatenate(left_turn_percentage)
             
@@ -2174,7 +2244,7 @@ def hairplot_collisionmap(ec_light, ec_dark, plot_only_collisions):
                    colors='lightgray', linestyles='dashed')
     ax[1].vlines(0, -bound/2, bound/2,
                    colors='lightgray', linestyles='dashed')
-    sb.despine()
+    sns.despine()
     pl.tight_layout()
     pl.show()
     
@@ -2253,20 +2323,20 @@ def hairplot_w_preferenceindex(fish, cond, led_filter, frontwin, *nocolor):
     correct_traj_percentage_b_on_right = [-1*(2*ctp - 1) for
                                           ctp in combined_data['Correct Trajectory Percentage BRight'] if math.isfinite(ctp)]
 
-    # sb.barplot(data=cstart_percentage_b_on_right,
+    # sns.barplot(data=cstart_percentage_b_on_right,
     #            ax=axes[0], estimator=np.nanmean, color=plotcolors[0], orient='h', errwidth=.4)
 
-    # sb.barplot(data=cstart_percentage_b_on_left,
+    # sns.barplot(data=cstart_percentage_b_on_left,
     #             ax=axes[0], estimator=np.nanmean, color=plotcolors[1], orient='h', errwidth=.4)
 
-    sb.barplot(data=correct_traj_percentage_b_on_left,
-                ax=axes[0], estimator=np.nanmean, color=plotcolors[0], orient='h', errwidth=.4)
+    sns.barplot(data=correct_traj_percentage_b_on_left,
+                ax=axes[0], estimator=np.nanmedian, color=plotcolors[0], orient='h', errwidth=.4)
     
-    sb.barplot(data=correct_traj_percentage_b_on_right,
-               ax=axes[0], estimator=np.nanmean, color=plotcolors[1], orient='h', errwidth=.4)
-    sb.despine()
-#     sb.swarmplot(data=cstart_percentage_data_c1, ax=axes[0], color="b", alpha=.35, size=3, orient='h')
- #   sb.swarmplot(data=cstart_percentage_data_c2, ax=axes[0], color="k", alpha=.35, size=3, orient='h')
+    sns.barplot(data=correct_traj_percentage_b_on_right,
+               ax=axes[0], estimator=np.nanmedian, color=plotcolors[1], orient='h', errwidth=.4)
+    sns.despine()
+#     sns.swarmplot(data=cstart_percentage_data_c1, ax=axes[0], color="b", alpha=.35, size=3, orient='h')
+ #   sns.swarmplot(data=cstart_percentage_data_c2, ax=axes[0], color="k", alpha=.35, size=3, orient='h')
     axes[1].set_axis_off()
     pl.tight_layout()
     pl.show()
@@ -2279,7 +2349,7 @@ def plot_all_results(cond_collector_list):
     #     raise Exception('cond_collector in wrong order')
 #    esc_assess_time = (cond_collector_list[
 #        0].timerange[1] - cond_collector_list[0].timerange[0]) / 2
-    cpal = sb.color_palette()
+    cpal = sns.color_palette()
     fig, axes = pl.subplots(1, 2)
     axes[0].set_title('Fish Orientation vs. Barrier (rad)')
     axes[1].set_title('Distance from Barrier at Escape Termination')
@@ -2290,7 +2360,7 @@ def plot_all_results(cond_collector_list):
         try:
 #            tsplot(cond_data['Heading vs Barrier'], axes[0])
             ts_plot(cond_data['Heading vs Barrier'], axes[0], 'k')
-#            sb.lineplot(data=df_conddata,
+#            sns.lineplot(data=df_conddata,
  #                       ax=axes[0], estimator=np.nanmean, color=cpal[cond_ind])
         except RuntimeError:
             print(cond_data['Heading vs Barrier'])
@@ -2322,9 +2392,9 @@ def plot_all_results(cond_collector_list):
     barax[2, 2].bar(xlocs, correct_bars)
 #    barax[1, 2].bar(xlocs, total_valid_bars)
 #    barax[1, 2].bar(xlocs, dud_bars)
-    sb.barplot(data=left_cstart_bar, ax=barax[1, 2], estimator=np.nanmedian, palette=cpal)
-    sb.swarmplot(data=left_cstart_bar, ax=barax[1, 2], color="0", alpha=.35, size=3)
-#    sb.violinplot(data=[np.concatenate(bdist, axis=0) for bdist 
+    sns.barplot(data=left_cstart_bar, ax=barax[1, 2], estimator=np.nanmedian, palette=cpal)
+    sns.swarmplot(data=left_cstart_bar, ax=barax[1, 2], color="0", alpha=.35, size=3)
+#    sns.violinplot(data=[np.concatenate(bdist, axis=0) for bdist 
  #                       in [c['Distance From Barrier After Escape']
   #                      for c in cond_data_arrays]],  ax=axes[1])
     cstart_percentage_data = [cdir[~np.isnan(cdir)] for
@@ -2342,46 +2412,43 @@ def plot_all_results(cond_collector_list):
 #sns.barplot(x="day", y="total_bill", data=tips, capsize=.1, ci="sd")
 #sns.swarmplot(x="day", y="total_bill", data=tips, color="0", alpha=.35)
 
-    cpal = sb.color_palette("hls", 8)
-    sb.barplot(data=cstart_percentage_data, 
-               ax=barax[0, 0], estimator=np.nanmean, palette=cpal)
-    sb.swarmplot(data=cstart_percentage_data, ax=barax[0,0], color="0", alpha=.35, size=3)
+    cpal = sns.color_palette("hls", 8)
+    sns.barplot(data=cstart_percentage_data, 
+               ax=barax[0, 0], estimator=np.nanmedian, palette=cpal)
+    sns.swarmplot(data=cstart_percentage_data, ax=barax[0,0], color="0", alpha=.35, size=3)
 
-    sb.barplot(data=ctraj_percentage_data, 
-               ax=barax[1, 1], estimator=np.nanmean, palette=cpal)
-    sb.swarmplot(data=ctraj_percentage_data, ax=barax[1,1], color="0", alpha=.35, size=3)
-
-
-    
-    sb.barplot(data=cstart_rel_to_prevbout, ax=barax[2, 1], estimator=np.nanmean, palette=cpal)
+    sns.barplot(data=ctraj_percentage_data, 
+               ax=barax[1, 1], estimator=np.nanmedian, palette=cpal)
+    sns.swarmplot(data=ctraj_percentage_data, ax=barax[1,1], color="0", alpha=.35, size=3)
+    sns.barplot(data=cstart_rel_to_prevbout, ax=barax[2, 1], estimator=np.nanmedian, palette=cpal)
     collision_percentage_data = [clp[~np.isnan(clp)] for
                                  clp in [c['Collision Percentage']
                                          for c in cond_data_arrays]]
-    sb.barplot(data=collision_percentage_data, 
-               ax=barax[1, 0], estimator=np.nanmean, palette=cpal)
-#    sb.swarmplot(data=collision_percentage_data, ax=barax[1,0], color="0", alpha=.35, size=3)
+    sns.barplot(data=collision_percentage_data, 
+               ax=barax[1, 0], estimator=np.nanmedian, palette=cpal)
+#    sns.swarmplot(data=collision_percentage_data, ax=barax[1,0], color="0", alpha=.35, size=3)
 
-    sb.boxplot(data=[2*clat[~np.isnan(clat)] for
+    sns.boxplot(data=[2*clat[~np.isnan(clat)] for
                      clat in [c['CStart Latency']
                               for c in cond_data_arrays]],
-               ax=barax[0, 1], whis=np.inf)
-    sb.boxplot(data=[cang[~np.isnan(cang)] for
+                ax=barax[0, 1], whis=np.inf)
+    sns.boxplot(data=[cang[~np.isnan(cang)] for
                      cang in [c['CStart Angle']
                               for c in cond_data_arrays]],
-               ax=barax[0, 2], notch=True)
+                ax=barax[0, 2], notch=True)
     
     taps_per_entry = [num_entries[~np.isnan(num_entries)] for
                       num_entries in [c['Taps Per Entry Into Arena']
                                       for c in cond_data_arrays]]
-    sb.boxplot(data=taps_per_entry,
-               ax=barax[1, 1])
-    # sb.boxplot(data=[dur[~np.isnan(dur)] for
+    sns.boxplot(data=taps_per_entry,
+                ax=barax[1, 1])
+    # sns.boxplot(data=[dur[~np.isnan(dur)] for
     #                  dur in [c['Total Time In Center']
     #                          for c in cond_data_arrays]],
     #            ax=barax[1, 2])
 
     
-    sb.boxplot(data=[ptax[~np.isnan(ptax)] for
+    sns.boxplot(data=[ptax[~np.isnan(ptax)] for
                      ptax in [c['Phototaxis to Tap Time']
                               for c in cond_data_arrays]],
                ax=barax[2, 0])
@@ -2503,7 +2570,7 @@ def boxplot_across_conditions(data_lists, cmap):
     for i, dl in enumerate(data_lists):
         xvals.append(i*np.ones(len(dl)))
         yvals.append(dl)
-    sb.boxplot(x=np.concatenate(xvals), y=np.concatenate(yvals), palette=cmap)
+    sns.boxplot(x=np.concatenate(xvals), y=np.concatenate(yvals), palette=cmap)
     
     
 def correct_traj_by_visual_window(fishlist, div, mapfunc, conditions):
@@ -2534,16 +2601,16 @@ def correct_traj_by_visual_window(fishlist, div, mapfunc, conditions):
             xvals.append(i*np.ones(len(d)))
         xv_concat = np.concatenate(xvals)
         yvals = list(map(mapfunc, np.concatenate(correct_traj_percentage)))
-       # sb.pointplot(x=xv_concat, y=yvals, color='gray', markers='s')
-       #    sb.stripplot(x=xv_concat, y=yvals, dodge=False, alpha=.2, zorder=0, jitter=.005, color='dodgerblue')
+       # sns.pointplot(x=xv_concat, y=yvals, color='gray', markers='s')
+       #    sns.stripplot(x=xv_concat, y=yvals, dodge=False, alpha=.2, zorder=0, jitter=.005, color='dodgerblue')
         if condition == 'l':
             p_color = 'gold'
         else:
             p_color = 'silver'
-        sb.lineplot(x=xv_concat, y=yvals, color=p_color, ax=ax[0])
+        sns.lineplot(x=xv_concat, y=yvals, color=p_color, ax=ax[0])
         ax[1].plot(total_correct_trials, color=p_color)
         total_correct_tlist.append(total_correct_trials)
-    sb.despine()
+    sns.despine()
     pl.show()
     return total_correct_tlist
 
@@ -2551,7 +2618,7 @@ def correct_traj_by_visual_window(fishlist, div, mapfunc, conditions):
 # it'll fall out in the average over time. 
 def make_velocity_plots(ec_by_condition, ci):
 
-    cpal = sb.color_palette('hls', 8)
+    cpal = sns.color_palette('hls', 8)
     fig, ax = pl.subplots(1, 2)
     c1_vels = []
     c2_vels = []
@@ -2574,9 +2641,9 @@ def make_velocity_plots(ec_by_condition, ci):
                 vel_pair_first_trials = [np.mean(max_vels_per_trial1[0:1]),
                                          np.mean(max_vels_per_trial2[0:1])]
                 pairwise_max_vel_first_trials.append(vel_pair_first_trials)
-                sb.lineplot(x=np.array([0, 1]), y=np.array(vel_pair),
+                sns.lineplot(x=np.array([0, 1]), y=np.array(vel_pair),
                             ax=ax[1], markers=True, marker='.', color='k', alpha=.1)
-       #         sb.lineplot(x=np.array([0, 1]), y=np.array(vel_pair_first_trials),
+       #         sns.lineplot(x=np.array([0, 1]), y=np.array(vel_pair_first_trials),
         #                    ax=ax[1], markers=True, marker='.', color='k', alpha=.1)
                 
     ts_plot(c1_vels, ax[0], cpal[0], ci)
@@ -2586,7 +2653,7 @@ def make_velocity_plots(ec_by_condition, ci):
     l_velocities = [v[0] for v in pairwise_max_vel_first_trials]
     n_velocities = [v[1] for v in pairwise_max_vel_first_trials]
     
-    sb.pointplot(x=np.concatenate([np.zeros(len(l_velocities)),
+    sns.pointplot(x=np.concatenate([np.zeros(len(l_velocities)),
                                    np.ones(len(n_velocities))]),
                  y=np.concatenate([l_velocities,
                                    n_velocities]), color='k', ax=ax[1], zorder=20)
@@ -2609,21 +2676,21 @@ def pairwise_light_dark(ec_fb):
         collision_pair = [l_collision_rate, ec_fb[1].escape_data["Collision Percentage"][dark_ind]]
         ld_correct_pairs.append(esc_pair)
         ld_collision_pairs.append(collision_pair)
-        sb.lineplot(x=np.array([0, 1]), y=np.array(esc_pair),
+        sns.lineplot(x=np.array([0, 1]), y=np.array(esc_pair),
                             ax=ax[0], markers=True, marker='.', color='k', alpha=.1)
     l_avoidance = [e[0] for e in ld_correct_pairs]
     d_avoidance = [e[1] for e in ld_correct_pairs]
     l_collisions = [c[0] for c in ld_collision_pairs]
     d_collisions = [c[1] for c in ld_collision_pairs]
 
-    sb.pointplot(x=np.concatenate([np.zeros(len(l_avoidance)),
+    sns.pointplot(x=np.concatenate([np.zeros(len(l_avoidance)),
                                    np.ones(len(d_avoidance))]),
                  y=np.concatenate([l_avoidance,
                                    d_avoidance]), color='k', ax=ax[0], zorder=20)
-    sb.barplot(x=np.concatenate([np.zeros(len(l_collisions)),
+    sns.barplot(x=np.concatenate([np.zeros(len(l_collisions)),
                                  np.ones(len(d_collisions))]),
-               y=np.concatenate([l_collisions,
-                                 d_collisions]), color='k', ax=ax[1], zorder=20)
+                y=np.concatenate([l_collisions,
+                                  d_collisions]), color='k', ax=ax[1], zorder=20, estimator=np.nanmedian)
     print(ttest_rel(l_avoidance, d_avoidance))
     print(ttest_rel(l_collisions, d_collisions))
     print(np.mean(l_collisions), np.mean(d_collisions))
@@ -2694,6 +2761,7 @@ if __name__ == '__main__':
                        "062221_3", "062221_4", "062221_5", "062221_6"]
 
 
+
     red48mm_8mmdist = ["062521_3", "062521_4", "063021_2",
                        "063021_3", "063021_4", "063021_5",
                        "063021_6", "070121_1", "070121_2", 
@@ -2713,7 +2781,6 @@ if __name__ == '__main__':
                           "071221_5", "071221_6", "071221_7", "071221_8",
                           "071321_3", "071421_1", "071421_2",
                           "071421_3", "071421_4", "071421_5", "071421_7"]
-
 
 
     red12mm_4mmdist_2h = ["072921_1", "072921_2", "072921_4", "073021_1",
@@ -2756,7 +2823,7 @@ if __name__ == '__main__':
         
     mauth_r_ec = experiment_collector(wik_mauthner_r, ['l', 'n'],
                                       [0, visfunc, 0])
-    pairwise_l_to_n_PI(mauth_l_ec, mauth_r_ec)
+    pairwise_l_to_n_PI_mauth(mauth_l_ec, mauth_r_ec)
 
 
     combined_hairplot([mauth_l_ec[0]], 0, 0, .7)
@@ -2783,17 +2850,22 @@ if __name__ == '__main__':
     mauthner_r_PI = list(map(lambda x: -1*(2*x - 1), mauth_r_ltp[0]))
 #    mauthner_r_PI = list(map(lambda x: (2*x - 1), mauth_r_ltp[0]))
     mauthner_all = mauthner_l_PI + mauthner_r_PI
-    cpal = sb.color_palette('husl', 8)
-    cpal2 = sb.color_palette('hls', 8)
+    cpal = sns.color_palette('husl', 8)
+    cpal2 = sns.color_palette('hls', 8)
     fig, ax = pl.subplots(1, 1)
-    sb.set(style="ticks", rc={"lines.linewidth": 1})
-    sb.kdeplot(ltp_PI,
+    sns.set(style="ticks", rc={"lines.linewidth": 1})
+    sns.kdeplot(ltp_PI,
                color=cpal2[0], clip=[-1, 1], ax=ax)
-    sb.kdeplot(mauthner_l_PI,
+
+
+
+
+                       
+    sns.kdeplot(mauthner_l_PI,
                clip=[-1, 1], ax=ax, color=cpal[3])
-    sb.kdeplot(mauthner_r_PI, 
+    sns.kdeplot(mauthner_r_PI, 
                clip=[-1, 1], ax=ax, color=cpal[1])
- #   sb.kdeplot(mauthner_all, 
+ #   sns.kdeplot(mauthner_all, 
   #             clip=[-1, 1], ax=ax, color=cpal[1])
 
     pl.show()
@@ -2802,6 +2874,11 @@ if __name__ == '__main__':
     p_n_to_r = ttest_ind(ltp_PI, mauthner_r_PI)
     PI_means = list(map(np.mean, [ltp_PI, mauthner_l_PI, mauthner_r_PI]))
     PI_stds = list(map(np.std, [ltp_PI, mauthner_l_PI, mauthner_r_PI]))
+
+    PI_medians = list(map(np.median, [ltp_PI, mauthner_l_PI, mauthner_r_PI]))
+    PI_iqls = [np.quantile(x, [0, .25, .5, .75, 1]) for x in [ltp_PI, mauthner_l_PI, mauthner_r_PI]]
+
+    
 
     ecs_virtual = experiment_collector(virtual, ['v', 'i', 'n'], [0, visfunc, 1])
     ec_fourb = experiment_collector(four_b, ['l', 'd', 'n'],
@@ -2935,21 +3012,20 @@ if __name__ == '__main__':
     red_AI = [list(map(lambda x: (2*x - 1), ai)) for ai in red_correct]
     dark_AI = list(map(lambda x: (2*x - 1), dark_correct[0]))
     dark_AI_ttest = scipy.stats.ttest_1samp(dark_AI, popmean=0)
-    
-
+    dark_AI_sr_test = scipy.stats.wilcoxon(dark_AI)
     
     red_AI_avg = list(map(np.mean, red_AI))
 
     cstart_latencies = collect_varb_across_ec(red_b_list, 'l', 'CStart Latency', [0, visfunc, 1])
     cstart_amplitudes = collect_varb_across_ec(red_b_list, 'l', 'CStart Angle', [0, visfunc, 1])
     
-    sb.distplot(2*np.concatenate(cstart_latencies), bins=10)
+    sns.distplot(2*np.concatenate(cstart_latencies), bins=10)
     pl.show()
-    sb.distplot(np.concatenate(cstart_amplitudes), bins=10)
+    sns.distplot(np.concatenate(cstart_amplitudes), bins=10)
     pl.show()
 
     fig, ax = pl.subplots(1,1)
-    sb.distplot(ltp_PI, bins=5, ax=ax)
+    sns.distplot(ltp_PI, bins=5, ax=ax)
 #    ax.set_xlim([-1,1])
     
 
@@ -2957,15 +3033,27 @@ if __name__ == '__main__':
     # USE TTEST_1SAMP W POP MEAN 0.
 
     ttest_white = [scipy.stats.ttest_1samp(list(map(lambda x: (2*x -1), a)), popmean=0) for a in white_and_virtual_correct]
+    wilcoxon_white = [scipy.stats.wilcoxon(list(map(lambda x: (2*x -1), a))) for a in white_and_virtual_correct]
 
     white_vs_red = scipy.stats.ttest_ind(list(map(lambda x:(2*x -1), white_and_virtual_correct[0])),
                                          list(map(lambda x:(2*x -1), red_correct[0])))
-  
+
+    wilcoxon_white_vs_red = scipy.stats.mannwhitneyu(list(map(lambda x:(2*x -1), white_and_virtual_correct[0])),
+                                                 list(map(lambda x:(2*x -1), red_correct[0])))
+
 
     ttest_results = [scipy.stats.ttest_1samp(list(map(lambda x: (2*x -1), a)), popmean=0) for a in red_correct]
-    ttest_24mm_4mm_vs_48mm_8mm_2h = scipy.stats.ttest_ind(list(map(lambda x:(2*x -1), red_correct[1])),
+    wilcoxon_results_red_correct = [scipy.stats.wilcoxon(list(map(lambda x: (2*x -1), a))) for a in red_correct]          
+
+          
+    ttest_24mm_4mm_vs_48mm_8mm_2h = scipy.stats.mannwhitneyu(list(map(lambda x:(2*x -1), red_correct[1])),
                                                           list(map(lambda x:(2*x -1), red_correct[4])))
-    
+
+    wilcoxon_24mm_4mm_vs_48mm_8mm_2h = scipy.stats.mannwhitneyu(list(map(lambda x:(2*x -1), red_correct[1])),
+                                                             list(map(lambda x:(2*x -1), red_correct[4])))
+
+
+          
     avg_latency = np.mean(2*np.concatenate(cstart_latencies))
     avg_turn = np.mean(np.concatenate(cstart_amplitudes))
 
@@ -2980,6 +3068,7 @@ if __name__ == '__main__':
 
     plot_varb_over_ecs([cstart_correct, lambda x: (2*x -1)])
     ttest_results_cstart = [scipy.stats.ttest_1samp(list(map(lambda x: (2*x -1), a)), popmean=0) for a in cstart_correct]
+    wilcoxon_results_cstart = [scipy.stats.wilcoxon(list(map(lambda x: (2*x -1), a))) for a in cstart_correct]
 
     total_fish_n = [len(f.included_fish) for f in all_n_ec]
 
