@@ -1,0 +1,17 @@
+import numpy as np
+import seaborn as sns
+from matplotlib import pyplot as pl
+
+def calculate_height(barrier_height, barrier_distance, water_depth):
+    a_range = np.arange(0, barrier_distance, .01)
+    water_refractive_index = 1.33
+    underwater_triangle = []
+    overwater_triangle = []
+    for a in a_range:
+        underwater_triangle.append(1.33 * np.arctan(1/a))
+        overwater_triangle.append(
+            np.arctan((barrier_height - water_depth) / (barrier_distance - a)))
+        
+        
+        
+        

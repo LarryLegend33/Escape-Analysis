@@ -1725,6 +1725,23 @@ def plot_varb_over_ecs(dv1, *dv2):
     sns.despine()
     pl.show()
 
+def full_distrib_varb_over_ecs(dv1):
+    fig, ax = pl.subplots(1, 1, figsize=(4, 1))
+    sns.set(style="ticks", rc={"lines.linewidth": .75})
+    dv, mapfunc = dv1
+    xvals = []
+    print(dv)
+    for i, d in enumerate(dv):
+        xvals.append(i*np.ones(len(d)))
+    xv_concat = np.concatenate(xvals)
+    yvals = list(map(mapfunc, np.concatenate(dv)))
+#    sns.boxenplot(x=xv_concat, y=yvals, k_depth="proportion", outlier_prop=1e-100)  #, markers='s')
+    sns.boxplot(x=xv_concat, y=yvals, whis=np.inf, color='', linewidth=1.5,
+                medianprops=dict(color="maroon", linewidth=1, alpha=1))
+#    sns.barplot(x=xv_concat, y=yvals, color='gray', estimator=np.nanmedian)        
+    sns.despine()
+    pl.show()
+
 
 # enter complete experiment collectors (not filtered) here.
 
@@ -2608,8 +2625,7 @@ def correct_traj_by_visual_window(fishlist, div, mapfunc, conditions):
             p_color = 'gold'
         else:
             p_color = 'silver'
-#        sns.lineplot(x=xv_concat, y=yvals, color=p_color, ax=ax[0])
-        sns.lineplot(x=xv_concat, y=yvals, color=p_color, ax=ax[0], estimator=np.median)
+        sns.lineplot(x=xv_concat, y=yvals, color=p_color, ax=ax[0])
         ax[1].plot(total_correct_trials, color=p_color)
         total_correct_tlist.append(total_correct_trials)
     sns.despine()
@@ -2712,6 +2728,19 @@ def pairwise_light_dark(ec_fb):
 
 if __name__ == '__main__':
 
+    daniel = ['010100_1', '010100_2', '010100_3', '010100_4', '010100_5',
+              '010100_6', '010100_7', '010100_8', '010100_9', '010101_1',
+              '010101_2', '010101_3', '010101_4', '010101_5', '010101_6',
+              '010101_7', '010101_8', '010101_9', '010102_1', '010102_2',
+              '010102_3', '010102_4', '010102_5', '010102_6', '010102_7',
+              '010102_8', '010102_9', '010200_1', '010200_2', '010200_3',
+              '010200_4', '010200_5', '010200_6', '010200_7', '010200_8',
+              '010200_9', '010201_1', '010201_2', '010201_3', '010201_4',
+              '010201_5', '010201_6', '010201_7', '010201_8', '010201_9',
+              '010203_1', '010203_2', '010203_3', '010203_4', '010203_5',
+              '010203_6', '010203_7', '010203_8', '010203_9', '010300_1',
+              '010300_2', '010301_1', '010301_2', '010302_1', '010302_2']
+              
     
     # VIRTUAL BARRIERS
     virtual = ['091119_4', '091019_1', '091019_2', '091119_1', '091119_2',
@@ -2959,7 +2988,7 @@ if __name__ == '__main__':
 
 
     make_velocity_plots([[red48mm_8mmdist_ec_2h[0], red48mm_8mmdist_ec[0]],
-                          [red48mm_8mmdist_ec_2h[1], red48mm_8mmdist_ec[1]]], 95)
+                         [red48mm_8mmdist_ec_2h[1], red48mm_8mmdist_ec[1]]], 95)
     
     
 
@@ -2995,7 +3024,9 @@ if __name__ == '__main__':
     plot_varb_over_ecs([white_and_virtual_bleft, lambda x: (2*x -1)],
                        [white_and_virtual_bright, lambda x: -1*(2*x - 1)])
 
+    full_distrib_varb_over_ecs([white_and_virtual_correct, lambda x: (2*x -1)])
     plot_varb_over_ecs([white_and_virtual_correct, lambda x: 2*x -1])
+    
     white_and_virtual_AI = [list(map(lambda x: (2*x - 1), ai)) for ai in white_and_virtual_correct]
     white_and_virtual_AI_avg = list(map(np.mean, white_and_virtual_AI))
     
@@ -3013,8 +3044,12 @@ if __name__ == '__main__':
 
     plot_varb_over_ecs([red_bleft, lambda x: (2*x -1)],
                        [red_bright, lambda x: -1*(2*x - 1)])
-
+    full_distrib_varb_over_ecs([red_correct, lambda x: 2*x -1])
+    plot_varb_over_ecs([red_correct, lambda x: 2*x -1])
+    
     correct_pi = plot_varb_over_ecs([red_correct, lambda x: 2*x -1])
+
+
 
     red_AI = [list(map(lambda x: (2*x - 1), ai)) for ai in red_correct]
     dark_AI = list(map(lambda x: (2*x - 1), dark_correct[0]))
