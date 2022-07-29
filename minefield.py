@@ -1181,6 +1181,7 @@ class Escapes:
                 self.escape_latencies.append(np.nan)
                 self.cstarts_per_trial.append(0)
                 continue
+#            ta_mean = np.mean(ta[0:stim_init])
             c_start_angle = ta[ta_maxandmin[0]]
             c_start_ind = ta_maxandmin[0]
             self.cstart_angles.append(c_start_angle)
@@ -1736,8 +1737,8 @@ def full_distrib_varb_over_ecs(dv1):
     xv_concat = np.concatenate(xvals)
     yvals = list(map(mapfunc, np.concatenate(dv)))
 #    sns.boxenplot(x=xv_concat, y=yvals, k_depth="proportion", outlier_prop=1e-100)  #, markers='s')
-    sns.boxplot(x=xv_concat, y=yvals, whis=np.inf, color='', linewidth=1.5,
-                medianprops=dict(color="maroon", linewidth=1, alpha=1))
+    sns.boxplot(x=xv_concat, y=yvals, whis=np.inf, color='darkgray', linewidth=1.5,
+                medianprops=dict(color="maroon", linewidth=1.5, alpha=1))
 #    sns.barplot(x=xv_concat, y=yvals, color='gray', estimator=np.nanmedian)        
     sns.despine()
     pl.show()
@@ -2679,23 +2680,26 @@ def make_velocity_plots(ec_by_condition, ci):
     pl.show()
 
 
-def pairwise_light_dark(ec_fb):
+def pairwise_collision_avoidance_comparison(ec1, ec2):
     fig, ax = pl.subplots(1, 2)
     ld_correct_pairs = []
     ld_collision_pairs = []
-    for light_ind, fish in enumerate(ec_fb[0].included_fish):
-        tp = ec_fb[0].escape_data["Correct Trajectory Percentage"][light_ind]
-        l_collision_rate = ec_fb[0].escape_data["Collision Percentage"][light_ind]
+    for light_ind, fish in enumerate(ec1.included_fish):
+        tp = ec1.escape_data["Correct Trajectory Percentage"][light_ind]
+        l_collision_rate = ec1.escape_data["Collision Percentage"][light_ind]
         try:
-            dark_ind = ec_fb[1].included_fish.index(fish)
+            dark_ind = ec2.included_fish.index(fish)
         except ValueError:
             continue
-        esc_pair = [2*tp - 1, 2*ec_fb[1].escape_data["Correct Trajectory Percentage"][dark_ind] - 1]
-        collision_pair = [l_collision_rate, ec_fb[1].escape_data["Collision Percentage"][dark_ind]]
+        esc_pair = [2*tp - 1, 2*ec2.escape_data["Correct Trajectory Percentage"][dark_ind] - 1]
+        collision_pair = [l_collision_rate, ec2.escape_data["Collision Percentage"][dark_ind]]
         ld_correct_pairs.append(esc_pair)
         ld_collision_pairs.append(collision_pair)
         sns.lineplot(x=np.array([0, 1]), y=np.array(esc_pair),
-                            ax=ax[0], markers=True, marker='.', color='k', alpha=.1)
+                            ax=ax[0], markers=True, marker='.', color='k', alpha=.3)
+        sns.lineplot(x=np.array([0, 1]), y=np.array(collision_pair),
+                            ax=ax[1], markers=True, marker='.', color='k', alpha=.3)
+
     l_avoidance = [e[0] for e in ld_correct_pairs]
     d_avoidance = [e[1] for e in ld_correct_pairs]
     l_collisions = [c[0] for c in ld_collision_pairs]
@@ -2704,14 +2708,30 @@ def pairwise_light_dark(ec_fb):
     sns.pointplot(x=np.concatenate([np.zeros(len(l_avoidance)),
                                    np.ones(len(d_avoidance))]),
                  y=np.concatenate([l_avoidance,
-                                   d_avoidance]), color='k', ax=ax[0], zorder=20)
+                                   d_avoidance]), color='k', ax=ax[0], zorder=20, estimator=np.median)
+    sns.pointplot(x=np.concatenate([np.zeros(len(l_collisions)),
+                                   np.ones(len(d_collisions))]),
+                 y=np.concatenate([l_collisions,
+                                   d_collisions]), color='k', ax=ax[1], zorder=20, estimator=np.median)
+
     sns.barplot(x=np.concatenate([np.zeros(len(l_collisions)),
                                  np.ones(len(d_collisions))]),
                 y=np.concatenate([l_collisions,
                                   d_collisions]), color='k', ax=ax[1], zorder=20, estimator=np.nanmedian)
+
     print(ttest_rel(l_avoidance, d_avoidance))
     print(ttest_rel(l_collisions, d_collisions))
     print(np.mean(l_collisions), np.mean(d_collisions))
+    pl.show()
+    print("avoidance")
+    print(scipy.stats.wilcoxon(l_avoidance, d_avoidance))
+    print(np.median(l_avoidance), np.mean(d_avoidance))
+    print("collisions")
+    print(scipy.stats.wilcoxon(l_collisions, d_collisions))
+    print(np.median(l_collisions), np.median(d_collisions))
+
+    
+          
     pl.show()
 
 
@@ -2905,8 +2925,7 @@ if __name__ == '__main__':
     PI_medians = list(map(np.median, [ltp_PI, mauthner_l_PI, mauthner_r_PI]))
     PI_iqls = [np.quantile(x, [0, .25, .5, .75, 1]) for x in [ltp_PI, mauthner_l_PI, mauthner_r_PI]]
 
-    
-
+# #    
     ecs_virtual = experiment_collector(virtual, ['v', 'i', 'n'], [0, visfunc, 1])
     ec_fourb = experiment_collector(four_b, ['l', 'd', 'n'],
                                     [0, visfunc, 1])
@@ -2961,6 +2980,22 @@ if __name__ == '__main__':
                                                [0, visfunc, 1])
     plot_all_results(red24mm_4mmdist_ec)
 
+
+    q25_ntrials = PI_iqls[0][1]
+    q75_ntrials = PI_iqls[0][3]
+    q25_vs_barrier = pairwise_l_to_n_per_barrierside(
+        [ec_fourb, red24mm_4mmdist_ec], lambda x: x < q25_ntrials)
+    q75_vs_barrier = pairwise_l_to_n_per_barrierside(
+        [ec_fourb, red24mm_4mmdist_ec], lambda x: x > q75_ntrials)
+
+    n_pi_magnitude_outerQs = q25_vs_barrier[0] + list(-1*np.array(q75_vs_barrier[1]))
+    l_pi_magnitude_outerQs = q25_vs_barrier[2] + list(-1*np.array(q75_vs_barrier[3]))
+    
+    
+    wilcoxon_test_outerQs = scipy.stats.wilcoxon(n_pi_magnitude_outerQs, l_pi_magnitude_outerQs)
+    iq_vs_barrier_medians = list(map(np.median, [q25_vs_barrier[0], q25_vs_barrier[2], q75_vs_barrier[1], q75_vs_barrier[3]]))
+    # N=14 fish pooled. Woot woot. .0001 wilcoxon. 
+
     red12mm_4mmdist_ec_2h = experiment_collector(red12mm_4mmdist_2h,
                                                  ['l', 'n'], [0, visfunc, 1])
     plot_all_results(red12mm_4mmdist_ec_2h)
@@ -2992,23 +3027,7 @@ if __name__ == '__main__':
     
     
 
-    q25_ntrials = PI_iqls[0][1]
-    q75_ntrials = PI_iqls[0][3]
-    q25_vs_barrier = pairwise_l_to_n_per_barrierside(
-        [ec_fourb, red24mm_4mmdist_ec], lambda x: x < q25_ntrials)
-    q75_vs_barrier = pairwise_l_to_n_per_barrierside(
-        [ec_fourb, red24mm_4mmdist_ec], lambda x: x > q75_ntrials)
-
-    n_pi_magnitude_outerQs = q25_vs_barrier[0] + list(-1*np.array(q75_vs_barrier[1]))
-    l_pi_magnitude_outerQs = q25_vs_barrier[2] + list(-1*np.array(q75_vs_barrier[3]))
-    
-    
-    wilcoxon_test_outerQs = scipy.stats.wilcoxon(n_pi_magnitude_outerQs, l_pi_magnitude_outerQs)
-    iq_vs_barrier_medians = list(map(np.median, [q25_vs_barrier[0], q25_vs_barrier[2], q75_vs_barrier[1], q75_vs_barrier[3]]))
-    # N=14 fish pooled. Woot woot. .0001 wilcoxon. 
-    
-# #    
-
+  
 # #     collect_collision_stat(fishlist, 'l', np.ones(len(fishlist)), [0, visfunc, 1])
    
 #     """ PLOTS FOR PAPER """
@@ -3041,6 +3060,8 @@ if __name__ == '__main__':
     dark_correct = collect_varb_across_ec([four_b],
                                           'd', 'Left Traj Percentage', [0, visfunc, 1])
 
+    
+
 
     plot_varb_over_ecs([red_bleft, lambda x: (2*x -1)],
                        [red_bright, lambda x: -1*(2*x - 1)])
@@ -3048,9 +3069,7 @@ if __name__ == '__main__':
     plot_varb_over_ecs([red_correct, lambda x: 2*x -1])
     
     correct_pi = plot_varb_over_ecs([red_correct, lambda x: 2*x -1])
-
-
-
+    
     red_AI = [list(map(lambda x: (2*x - 1), ai)) for ai in red_correct]
     dark_AI = list(map(lambda x: (2*x - 1), dark_correct[0]))
     dark_AI_ttest = scipy.stats.ttest_1samp(dark_AI, popmean=0)
@@ -3119,6 +3138,37 @@ if __name__ == '__main__':
                                                      False, viswin)
     collision_percentage_by_fish = plot_collision_stat(collision_stats, num_n_trials)
     avg_collision_percentage = [np.mean(x) for x in collision_percentage_by_fish]
+
+
+    # Plotting heading angle before tap to show same visual angle.
+
+    plot_all_results([red24mm_4mmdist_ec[0]])
+    plot_all_results([red48mm_8mmdist_ec_2h[0]])
+    
+    # plotting collision rates and avoidance rates for mauthner
+
+
+#    visfunc = lambda x: (-180 + viswin < x < -viswin) or (
+ #       viswin < x < 180-viswin)
+
+    bleft_visfunc = lambda x: (-180 < x < -viswin) 
+    bright_visfunc = lambda x: (viswin < x < 180)
+
+    mauth_l_ec_bleft = experiment_collector(wik_mauthner_l, ['l'],
+                                            [0, bleft_visfunc, 0])
+    mauth_l_ec_bright = experiment_collector(wik_mauthner_l, ['l'],
+                                             [0, bright_visfunc, 0])
+    mauth_r_ec_bleft = experiment_collector(wik_mauthner_r, ['l'],
+                                            [0, bleft_visfunc, 0])
+    mauth_r_ec_bright = experiment_collector(wik_mauthner_r, ['l'],
+                                             [0, bright_visfunc, 0])
+
+    plot_all_results(mauth_r_ec_bright)
+
+    
+#    combined_hairplot([mauth_l_ec[1]], 0, 0, 1)
+
+    
 
 
 # # #    
