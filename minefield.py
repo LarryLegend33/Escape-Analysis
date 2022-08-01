@@ -61,10 +61,11 @@ def ts_plot(list_of_lists, ax, cl, *ci_input):
                'y': value_list}
     df = pd.DataFrame(df_dict)
     if ci_input != ():
-        sns.lineplot(data=df, x='x', y='y', ax=ax, ci=ci_input[0], color=cl, estimator=np.median)  #, color='deeppink')
+        lp = sns.lineplot(data=df, x='x', y='y', ax=ax, ci=ci_input[0], color=cl, estimator=np.mean)  #, color='deeppink')
     else:
-        sns.lineplot(data=df, x='x', y='y', ax=ax, color=cl, estimator=np.median)
+        lp = sns.lineplot(data=df, x='x', y='y', ax=ax, color=cl, estimator=np.mean)
    # pl.show()
+    ax.set_ylim([0, 180])
     return df
 
 
@@ -1599,8 +1600,13 @@ def plot_collision_stat(all_collisions, num_n_trials):
         xv_concat = np.concatenate(xvals)
         yvals = np.concatenate(collision_stats_to_percentage)
 #    sns.pointplot(x=xv_concat, y=yvals, color='k')
-    sns.pointplot(x=xv_concat, y=yvals, color='k', estimator=np.median)
-    sns.barplot(x=xv_concat, y=yvals, color='k', estimator=np.median)
+#    sns.pointplot(x=xv_concat, y=yvals, color='k', estimator=np.median)
+ #   sns.barplot(x=xv_concat, y=yvals, color='k', estimator=np.median)
+
+    sns.boxplot(x=xv_concat, y=yvals, whis=np.inf, color='darkgray', linewidth=1.5,
+                medianprops=dict(color="maroon", linewidth=1.5, alpha=1))
+
+    
     pl.show()
     return collision_stats_to_percentage
     
@@ -2378,7 +2384,7 @@ def plot_all_results(cond_collector_list):
         cond_data_arrays.append(cond_data)
         try:
 #            tsplot(cond_data['Heading vs Barrier'], axes[0])
-            ts_plot(cond_data['Heading vs Barrier'], axes[0], 'k')
+            ts_plot([np.degrees(c) for c in cond_data['Heading vs Barrier']], axes[0], 'k')
 #            sns.lineplot(data=df_conddata,
  #                       ax=axes[0], estimator=np.nanmean, color=cpal[cond_ind])
         except RuntimeError:
@@ -3139,12 +3145,15 @@ if __name__ == '__main__':
     collision_percentage_by_fish = plot_collision_stat(collision_stats, num_n_trials)
     avg_collision_percentage = [np.mean(x) for x in collision_percentage_by_fish]
 
+    mw_collisions_24_vs_12far = scipy.stats.mannwhitneyu(collision_stats[1], collision_stats[2])
+    mw_collisions_12close_vs_24 = scipy.stats.mannwhitneyu(collision_stats[0], collision_stats[1])
+
 
     # Plotting heading angle before tap to show same visual angle.
 
     plot_all_results([red24mm_4mmdist_ec[0]])
     plot_all_results([red48mm_8mmdist_ec_2h[0]])
-    
+
     # plotting collision rates and avoidance rates for mauthner
 
 
