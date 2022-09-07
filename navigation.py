@@ -130,7 +130,7 @@ def proximity_histogram(nav_list, condition, b_color, *norm_max):
     ax.set_aspect('equal')
     fig.colorbar(hm[3], ax=ax)
     pl.show()
-    return nav_object_collection, hm[0], barrier_prox_stats
+    return nav_object_collection, hm[0], barrier_prox_stats, coords_wrt_barrier
 
 
 class Navigator:
@@ -561,11 +561,31 @@ blackandred_b = ["061219_2", "061219_3", "061219_4",
 #navs_red = proximity_calculator(red_b, exp_type, [1, 0, 0], navs_white[1])
 
 
-navs_white, density_w, bprox_w = proximity_histogram(white_b, exp_type, [1, 1, 1])
-navs_red, density_r, bprox_r = proximity_histogram(red_b, exp_type, [1, 0, 0], np.max(density_w))
+navs_white, density_w, bprox_w, w_coords_wrt_barrier = proximity_histogram(white_b, exp_type, [1, 1, 1])
+navs_red, density_r, bprox_r, r_coords_wrt_barrier = proximity_histogram(red_b, exp_type, [1, 0, 0], np.max(density_w))
 xs = np.zeros(len(bprox_r)).tolist() + np.ones(len(bprox_w)).tolist()
 sb.barplot(xs, bprox_r + bprox_w, color='gray')
+pl.show()
 ttest_results = scipy.stats.ttest_ind(bprox_r, bprox_w)
+
+
+w_coords_wrt_barrier_finite = [c for c in w_coords_wrt_barrier if np.isfinite(c[0])]
+r_coords_wrt_barrier_finite = [c for c in r_coords_wrt_barrier if np.isfinite(c[0])]
+coordmag_distribution_w = list(map(lambda x: np.round(.053 * np.linalg.norm(x) - 3, 2), w_coords_wrt_barrier_finite))
+coordmag_distribution_r = list(map(lambda x: np.round(.053 * np.linalg.norm(x) - 3, 2), r_coords_wrt_barrier_finite))
+sb.distplot(coordmag_distribution_w)
+sb.distplot(coordmag_distribution_r)
+print(np.median(coordmag_distribution_w))
+print(np.median(coordmag_distribution_r))
+print(scipy.stats.mode(coordmag_distribution_w))
+print(scipy.stats.mode(coordmag_distribution_r))
+
+print(scipy.stats.mannwhitneyu(coordmag_distribution_w, coordmag_distribution_r))
+pl.show()
+
+
+
+
 
 #navs_big = proximity_calculator(red_2xheight_4xwide, exp_type, [1, 0, 0])  #, navs_white[1])
 

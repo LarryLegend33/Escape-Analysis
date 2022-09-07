@@ -219,12 +219,15 @@ class Condition_Collector:
                 if (trial not in trialfilter):
                     print("TRIAL NOT IN FILTER")
                     continue
-                gf = escape_obj.pre_escape[trial]
+
                 # gf is grayframes (e.g. how many gray frames happened before the escape tap)
                 try:
+                    gf = escape_obj.pre_escape[trial]
                     num_gfs = len(gf)
                 except TypeError:
                     num_gfs = 1
+                except IndexError:
+                    num_gfs = np.nan
 
                 tap_times.append(num_gfs / 200.0)
                 last_x.append(escape_obj.xy_coords_by_trial[trial][0][
@@ -1045,115 +1048,123 @@ class Escapes:
                 continue
             tail_kern = Gaussian1DKernel(self.cstart_filter_std)
             stim_init = self.stim_init_times[trial]
-            print("Stim Init")
-            pre_xy_file = self.pre_escape[trial]
-            try:
-                pre_xy_file[0]
-            except IndexError:
-                pre_xy_file = [pre_xy_file.tolist()]
-            pre_xcoords = []
-            pre_ycoords = []
-            # go back three seconds before barrier entry. 
-            for coordstring in pre_xy_file[-600:]:
-                x, y = x_and_y_coord(coordstring)
-                pre_xcoords.append(x)
-                pre_ycoords.append(y)
-            pre_xcoords += self.xy_coords_by_trial[
-               trial][0][0:stim_init+self.timerange[0]:2]
-            pre_ycoords += self.xy_coords_by_trial[
-               trial][1][0:stim_init+self.timerange[0]:2]
-            vel_vector = [np.sqrt(
-               np.dot(
-                   [v2[0]-v1[0], v2[1]-v1[1]],
-                   [v2[0]-v1[0], v2[1]-v1[1]])) for v1, v2 in sliding_window(
-                       2, zip(pre_xcoords, pre_ycoords))]
-            vv_filtered = gaussian_filter(vel_vector, 6)
-
-            bout_inds_max = argrelextrema(
-                np.array(vv_filtered), np.greater_equal,  order=5)[0]
-
-            bout_inds_min = argrelextrema(
-                np.array(vv_filtered), np.less_equal,  order=5)[0]
-
-            bi_norepeats = []
-            bi_norepeats_starts = []
-
-            if len(bout_inds_max) != 0:
-                if bout_inds_max[0] == 0:
-                    bout_inds_max = bout_inds_max[1:]
-            
-            if len(bout_inds_max) != 0:
-                bi_thresh = [arg for arg in bout_inds_max if vv_filtered[arg] > .6]
-                if len(bi_thresh) != 0:
-                    fi = [bi_thresh[0]]
-                else:
-                    fi = []
-                bi_norepeats = fi + [b for a, b in sliding_window(
-                    2, bi_thresh) if b-a > 20]
-
-                if len(bout_inds_min) != 0 and len(bi_norepeats) != 0:
-                    if bi_norepeats[0] < bout_inds_min[0]:
-                        bout_inds_min = np.insert(bout_inds_min, 0, 0)
-                elif len(bi_norepeats) != 0:
-                    bout_inds_min = np.insert(bout_inds_min, 0, 0)
-
-                bi_min_assignment = [[b for b in bout_inds_min - bi if b < 0] for bi in bi_norepeats]
-                bi_norepeats_starts = [bout_inds_min[np.argmax(b)] for b in bi_min_assignment if b]
-
-            if len(bi_norepeats_starts) != len(bi_norepeats):
-                bi_norepeats_starts = []
-                bi_norepeats = []
-                
-            # this is 200 ms backwards. does that feel right no. just go back 10 frames. 
-
-            bout_init_position = [[pre_xcoords[bi],
-                                   pre_ycoords[bi]] for bi in bi_norepeats_starts]
-            bout_post_position = [[np.nanmean(pre_xcoords[bi]),
-                                   np.nanmean(pre_ycoords[bi])]
-                                  for bi in bi_norepeats]
-            disp_vecs = [[b[0]-a[0], b[1]-a[1]] for a,
-                         b in zip(bout_init_position, bout_post_position)]
-
-            # angles between vectors. 
-            dots = [np.dot(i, j) / (magvector(i) * magvector(j))
-                    for i, j in sliding_window(2, disp_vecs)]
-            # assign pos or neg based on cross prod
-            ang = [np.arccos(a) for a in dots]
-            crosses = [np.cross(i, j) for i, j in sliding_window(2, disp_vecs)]
             bout_angles = []
-            for a, c in zip(ang, crosses):
-                if c < 0:
-                    bout_angles.append(a)
-                else:
-                    bout_angles.append(-1*a)
-            if bout_angles:
-                print(bout_angles[-1])
+            print("Stim Init")
+            try:
+                pre_xy_file = self.pre_escape[trial]
+                try:
+                    pre_xy_file[0]
+                except IndexError:
+                    pre_xy_file = [pre_xy_file.tolist()]
 
-            print(len(bout_angles))
-            print(bout_angles)
+                pre_xcoords = []
+                pre_ycoords = []
+                # go back three seconds before barrier entry. 
+                for coordstring in pre_xy_file[-600:]:
+                    x, y = x_and_y_coord(coordstring)
+                    pre_xcoords.append(x)
+                    pre_ycoords.append(y)
+                pre_xcoords += self.xy_coords_by_trial[
+                   trial][0][0:stim_init+self.timerange[0]:2]
+                pre_ycoords += self.xy_coords_by_trial[
+                   trial][1][0:stim_init+self.timerange[0]:2]
+                vel_vector = [np.sqrt(
+                   np.dot(
+                       [v2[0]-v1[0], v2[1]-v1[1]],
+                       [v2[0]-v1[0], v2[1]-v1[1]])) for v1, v2 in sliding_window(
+                           2, zip(pre_xcoords, pre_ycoords))]
+                vv_filtered = gaussian_filter(vel_vector, 6)
 
-            # only the first bout's angle is missed b/c its not relative to a past bout.
-            # 
-                
-            # fig, ax = pl.subplots(1, 3)
-            # ax[0].plot(pre_xcoords, pre_ycoords)
-            # barrier_x, barrier_y = self.barrier_xy_by_trial[trial]
-            # barr = pl.Circle((barrier_x, barrier_y), self.barrier_diam / 2,
-            #                  fc='r')
-            # ax[0].add_artist(barr)
-            # ax[0].set_xlim([0, 1280])
-            # ax[0].set_ylim([0, 1024])
-            # ax[0].scatter(
-            #     [x for i, x in enumerate(pre_xcoords) if i in bi_norepeats_starts],
-            #     [y for i, y in enumerate(pre_ycoords) if i in bi_norepeats_starts],
-            #     color='r', s=2)
-            # ax[1].plot(vv_filtered)
-            # ax[1].scatter(bi_norepeats, np.zeros(len(bi_norepeats)), color='k')
-            # ax[1].scatter(bi_norepeats_starts, np.zeros(len(bi_norepeats_starts)), color='r')
-            # ax[2].plot(bout_angles)
-            # ax[0].set_aspect('equal')
-            # pl.show()
-            self.pre_escape_bouts.append(bout_angles)
+                bout_inds_max = argrelextrema(
+                    np.array(vv_filtered), np.greater_equal,  order=5)[0]
+
+                bout_inds_min = argrelextrema(
+                    np.array(vv_filtered), np.less_equal,  order=5)[0]
+
+                bi_norepeats = []
+                bi_norepeats_starts = []
+
+                if len(bout_inds_max) != 0:
+                    if bout_inds_max[0] == 0:
+                        bout_inds_max = bout_inds_max[1:]
+
+                if len(bout_inds_max) != 0:
+                    bi_thresh = [arg for arg in bout_inds_max if vv_filtered[arg] > .6]
+                    if len(bi_thresh) != 0:
+                        fi = [bi_thresh[0]]
+                    else:
+                        fi = []
+                    bi_norepeats = fi + [b for a, b in sliding_window(
+                        2, bi_thresh) if b-a > 20]
+
+                    if len(bout_inds_min) != 0 and len(bi_norepeats) != 0:
+                        if bi_norepeats[0] < bout_inds_min[0]:
+                            bout_inds_min = np.insert(bout_inds_min, 0, 0)
+                    elif len(bi_norepeats) != 0:
+                        bout_inds_min = np.insert(bout_inds_min, 0, 0)
+
+                    bi_min_assignment = [[b for b in bout_inds_min - bi if b < 0] for bi in bi_norepeats]
+                    bi_norepeats_starts = [bout_inds_min[np.argmax(b)] for b in bi_min_assignment if b]
+
+                if len(bi_norepeats_starts) != len(bi_norepeats):
+                    bi_norepeats_starts = []
+                    bi_norepeats = []
+
+                # this is 200 ms backwards. does that feel right no. just go back 10 frames. 
+
+                bout_init_position = [[pre_xcoords[bi],
+                                       pre_ycoords[bi]] for bi in bi_norepeats_starts]
+                bout_post_position = [[np.nanmean(pre_xcoords[bi]),
+                                       np.nanmean(pre_ycoords[bi])]
+                                      for bi in bi_norepeats]
+                disp_vecs = [[b[0]-a[0], b[1]-a[1]] for a,
+                             b in zip(bout_init_position, bout_post_position)]
+
+                # angles between vectors. 
+                dots = [np.dot(i, j) / (magvector(i) * magvector(j))
+                        for i, j in sliding_window(2, disp_vecs)]
+                # assign pos or neg based on cross prod
+                ang = [np.arccos(a) for a in dots]
+                crosses = [np.cross(i, j) for i, j in sliding_window(2, disp_vecs)]
+
+                for a, c in zip(ang, crosses):
+                    if c < 0:
+                        bout_angles.append(a)
+                    else:
+                        bout_angles.append(-1*a)
+                if bout_angles:
+                    print(bout_angles[-1])
+
+                print(len(bout_angles))
+                print(bout_angles)
+
+                # only the first bout's angle is missed b/c its not relative to a past bout.
+                # 
+
+                # fig, ax = pl.subplots(1, 3)
+                # ax[0].plot(pre_xcoords, pre_ycoords)
+                # barrier_x, barrier_y = self.barrier_xy_by_trial[trial]
+                # barr = pl.Circle((barrier_x, barrier_y), self.barrier_diam / 2,
+                #                  fc='r')
+                # ax[0].add_artist(barr)
+                # ax[0].set_xlim([0, 1280])
+                # ax[0].set_ylim([0, 1024])
+                # ax[0].scatter(
+                #     [x for i, x in enumerate(pre_xcoords) if i in bi_norepeats_starts],
+                #     [y for i, y in enumerate(pre_ycoords) if i in bi_norepeats_starts],
+                #     color='r', s=2)
+                # ax[1].plot(vv_filtered)
+                # ax[1].scatter(bi_norepeats, np.zeros(len(bi_norepeats)), color='k')
+                # ax[1].scatter(bi_norepeats_starts, np.zeros(len(bi_norepeats_starts)), color='r')
+                # ax[2].plot(bout_angles)
+                # ax[0].set_aspect('equal')
+                # pl.show()
+                self.pre_escape_bouts.append(bout_angles)
+
+            except IndexError:
+                self.pre_escape_bouts.append([])
+                print("no pre-escape bout information")
+            
             c_thresh = self.cstart_angle_thresh
             ta = convolve(self.tailangle_sums[trial], tail_kern)
 
@@ -1932,6 +1943,7 @@ def pairwise_l_to_n_PI_mauth(ec_left, ec_right):
     n_barrier_on_ablated_side = n_right_mauth_bright + [-pi for pi in n_left_mauth_bleft]
     n_barrier_on_nonablated_side = n_right_mauth_bleft + [-pi for pi in n_left_mauth_bright]
 
+
     for i, (pi_barr, pi_control) in enumerate(zip(l_barrier_on_ablated_side, n_barrier_on_ablated_side)):
         if i < len(l_right_mauth_bright):
             curr_color = cp[3]
@@ -1974,6 +1986,10 @@ def pairwise_l_to_n_PI_mauth(ec_left, ec_right):
     print(np.mean(n_barrier_on_ablated_side))
     print(np.median(l_barrier_on_ablated_side))
     print(np.median(n_barrier_on_ablated_side))
+
+
+    # the n trials don't have a barrier -- they are the n trials that correspond to the
+    # trials that pass threshold when L trials are on the particular barrier side.
     print(scipy.stats.ttest_1samp(n_barrier_on_ablated_side, popmean=0))
     print(scipy.stats.wilcoxon(n_barrier_on_ablated_side))
     print(scipy.stats.ttest_rel(n_barrier_on_nonablated_side, l_barrier_on_nonablated_side))
@@ -2397,6 +2413,7 @@ def plot_all_results(cond_collector_list):
     barax[0, 1].set_title('CStart Latency (ms)')
     barax[0, 2].set_title('CStart Angle (deg)')
     barax[1, 1].set_title('Correct Trajectory %')
+    barax[1, 1].set_ylim([0, 1])
    # barax[1, 2].set_title('Total Time Spent in Barrier Zone')
 #    barax[1, 2].set_title('Number of Duds')
     barax[1, 2].set_title('% Left CStarts')
@@ -2451,6 +2468,7 @@ def plot_all_results(cond_collector_list):
                                          for c in cond_data_arrays]]
     sns.barplot(data=collision_percentage_data, 
                ax=barax[1, 0], estimator=np.nanmedian, palette=cpal)
+    barax[1,0].set_ylim([0, 1])
 #    sns.swarmplot(data=collision_percentage_data, ax=barax[1,0], color="0", alpha=.35, size=3)
 
     sns.boxplot(data=[2*clat[~np.isnan(clat)] for
@@ -2720,10 +2738,10 @@ def pairwise_collision_avoidance_comparison(ec1, ec2):
                  y=np.concatenate([l_collisions,
                                    d_collisions]), color='k', ax=ax[1], zorder=20, estimator=np.median)
 
-    sns.barplot(x=np.concatenate([np.zeros(len(l_collisions)),
-                                 np.ones(len(d_collisions))]),
-                y=np.concatenate([l_collisions,
-                                  d_collisions]), color='k', ax=ax[1], zorder=20, estimator=np.nanmedian)
+#    sns.barplot(x=np.concatenate([np.zeros(len(l_collisions)),
+ #                                np.ones(len(d_collisions))]),
+  #              y=np.concatenate([l_collisions,
+   #                               d_collisions]), color='k', ax=ax[1], zorder=20, estimator=np.nanmedian)
 
     print(ttest_rel(l_avoidance, d_avoidance))
     print(ttest_rel(l_collisions, d_collisions))
@@ -2731,7 +2749,7 @@ def pairwise_collision_avoidance_comparison(ec1, ec2):
     pl.show()
     print("avoidance")
     print(scipy.stats.wilcoxon(l_avoidance, d_avoidance))
-    print(np.median(l_avoidance), np.mean(d_avoidance))
+    print(np.median(l_avoidance), np.median(d_avoidance))
     print("collisions")
     print(scipy.stats.wilcoxon(l_collisions, d_collisions))
     print(np.median(l_collisions), np.median(d_collisions))
@@ -2754,18 +2772,27 @@ def pairwise_collision_avoidance_comparison(ec1, ec2):
 
 if __name__ == '__main__':
 
-    daniel = ['010100_1', '010100_2', '010100_3', '010100_4', '010100_5',
-              '010100_6', '010100_7', '010100_8', '010100_9', '010101_1',
-              '010101_2', '010101_3', '010101_4', '010101_5', '010101_6',
-              '010101_7', '010101_8', '010101_9', '010102_1', '010102_2',
-              '010102_3', '010102_4', '010102_5', '010102_6', '010102_7',
-              '010102_8', '010102_9', '010200_1', '010200_2', '010200_3',
-              '010200_4', '010200_5', '010200_6', '010200_7', '010200_8',
-              '010200_9', '010201_1', '010201_2', '010201_3', '010201_4',
-              '010201_5', '010201_6', '010201_7', '010201_8', '010201_9',
-              '010203_1', '010203_2', '010203_3', '010203_4', '010203_5',
-              '010203_6', '010203_7', '010203_8', '010203_9', '010300_1',
-              '010300_2', '010301_1', '010301_2', '010302_1', '010302_2']
+    # second to last number is the condition
+
+    daniel0 = ['010100_1', '010100_2', '010100_3', '010100_4', '010100_5',
+               '010100_6', '010100_7', '010100_8', '010100_9', '010200_9',
+               '010200_1', '010200_2', '010200_3', '010200_4', '010200_5',
+               '010200_6', '010200_7', '010200_8', '010300_1', '010300_2']
+               
+            
+               
+    daniel1 = ['010101_1', '010101_2', '010101_3', '010101_4', '010101_5',
+               '010101_6', '010101_7', '010101_8', '010101_9', '010201_1',
+               '010201_2', '010201_3', '010201_4', '010201_5', '010201_6',
+               '010201_7', '010201_8', '010201_9', '010301_1', '010301_2']
+               
+    daniel2 = ['010102_1', '010102_2', '010102_3', '010102_4', '010102_5',
+               '010102_6', '010102_7', '010102_8', '010102_9', '010302_1',
+               '010302_2']
+
+
+    daniel3 = ['010203_1', '010203_2', '010203_3', '010203_4', '010203_5',
+               '010203_6', '010203_7', '010203_8', '010203_9']
               
     
     # VIRTUAL BARRIERS
@@ -2874,6 +2901,15 @@ if __name__ == '__main__':
       #  combined_hairplot(mec, 0, 0, 1)
 
 
+#    daniel0_ec = experiment_collector(daniel0, ['n'], [0, visfunc, 0])
+#    daniel1_ec = experiment_collector(daniel1, ['n'], [0, visfunc, 0])
+
+    # daniel_ec = experiment_collector(daniel1, ['n'], [0, visfunc, 0])
+#    combined_hairplot([daniel0_ec[0]], 0, 0, .7)
+#    combined_hairplot([daniel1_ec[0]], 0, 0, .7)
+
+      
+
     mauth_l_ec = experiment_collector(wik_mauthner_l, ['l', 'n'],
                                       [0, visfunc, 0])
 #    combined_hairplot([mauth_l_ec[1]], 0, 0, 1)
@@ -2899,19 +2935,26 @@ if __name__ == '__main__':
     all_ltp = collect_varb_across_ec(red_b_list+white_and_virtual_list[0:2],
                                      'n', 'Left Traj Percentage', [0, visfunc, 1])
 
-   
+
+
+    # STATISTIC 1 -- 
+    all_n_PI = list(map(lambda x: -1*(2*x - 1), np.concatenate(all_ltp)))
+    print(np.mean(all_n_PI))
+    print(np.median(all_n_PI))
+    all_n_wilcoxon = scipy.stats.wilcoxon(all_n_PI)
 
     
-    ltp_PI = list(map(lambda x: -1*(2*x - 1), np.concatenate(all_ltp)))
     mauthner_l_PI = list(map(lambda x: (2*x - 1), mauth_l_ltp[0]))
     mauthner_r_PI = list(map(lambda x: -1*(2*x - 1), mauth_r_ltp[0]))
 #    mauthner_r_PI = list(map(lambda x: (2*x - 1), mauth_r_ltp[0]))
     mauthner_all = mauthner_l_PI + mauthner_r_PI
+    
+    
     cpal = sns.color_palette('husl', 8)
     cpal2 = sns.color_palette('hls', 8)
     fig, ax = pl.subplots(1, 1)
     sns.set(style="ticks", rc={"lines.linewidth": 1})
-    sns.kdeplot(ltp_PI,
+    sns.kdeplot(all_n_PI,
                color=cpal2[0], clip=[-1, 1], ax=ax)
 
     sns.kdeplot(mauthner_l_PI,
@@ -2923,13 +2966,13 @@ if __name__ == '__main__':
 
     pl.show()
     ax.set_xlim([-1, 1])
-    p_n_to_l = ttest_ind(ltp_PI, mauthner_l_PI)
-    p_n_to_r = ttest_ind(ltp_PI, mauthner_r_PI)
-    PI_means = list(map(np.mean, [ltp_PI, mauthner_l_PI, mauthner_r_PI]))
-    PI_stds = list(map(np.std, [ltp_PI, mauthner_l_PI, mauthner_r_PI]))
+    p_n_to_l = ttest_ind(all_n_PI, mauthner_l_PI)
+    p_n_to_r = ttest_ind(all_n_PI, mauthner_r_PI)
+    PI_means = list(map(np.mean, [all_n_PI, mauthner_l_PI, mauthner_r_PI]))
+    PI_stds = list(map(np.std, [all_n_PI, mauthner_l_PI, mauthner_r_PI]))
 
-    PI_medians = list(map(np.median, [ltp_PI, mauthner_l_PI, mauthner_r_PI]))
-    PI_iqls = [np.quantile(x, [0, .25, .5, .75, 1]) for x in [ltp_PI, mauthner_l_PI, mauthner_r_PI]]
+    PI_medians = list(map(np.median, [all_n_PI, mauthner_l_PI, mauthner_r_PI]))
+    PI_iqls = [np.quantile(x, [0, .25, .5, .75, 1]) for x in [all_n_PI, mauthner_l_PI, mauthner_r_PI]]
 
 # #    
     ecs_virtual = experiment_collector(virtual, ['v', 'i', 'n'], [0, visfunc, 1])
@@ -2996,9 +3039,18 @@ if __name__ == '__main__':
 
     n_pi_magnitude_outerQs = q25_vs_barrier[0] + list(-1*np.array(q75_vs_barrier[1]))
     l_pi_magnitude_outerQs = q25_vs_barrier[2] + list(-1*np.array(q75_vs_barrier[3]))
-    
+
+
+#    return n_bleft, n_bright, l_bleft, l_bright
+    n_barrier_enhancement = q25_vs_barrier[1] + list(-1*np.array(q75_vs_barrier[0]))
+    l_barrier_enhancement = q25_vs_barrier[3] + list(-1*np.array(q75_vs_barrier[2]))
+
+
     
     wilcoxon_test_outerQs = scipy.stats.wilcoxon(n_pi_magnitude_outerQs, l_pi_magnitude_outerQs)
+    wilcoxon_barrier_enhancement = scipy.stats.wilcoxon(n_barrier_enhancement,
+                                                        l_barrier_enhancement)
+    
     iq_vs_barrier_medians = list(map(np.median, [q25_vs_barrier[0], q25_vs_barrier[2], q75_vs_barrier[1], q75_vs_barrier[3]]))
     # N=14 fish pooled. Woot woot. .0001 wilcoxon. 
 
@@ -3054,6 +3106,7 @@ if __name__ == '__main__':
     
     white_and_virtual_AI = [list(map(lambda x: (2*x - 1), ai)) for ai in white_and_virtual_correct]
     white_and_virtual_AI_avg = list(map(np.mean, white_and_virtual_AI))
+    white_and_virtual_AI_median = list(map(np.median, white_and_virtual_AI))
     
     
 
@@ -3063,8 +3116,11 @@ if __name__ == '__main__':
 
     red_correct = collect_varb_across_ec(red_b_list, 'l', 'Correct Trajectory Percentage', [0, visfunc, 1])
 
+#    dark_correct = collect_varb_across_ec([four_b],
+ #                                         'd', 'Left Traj Percentage', [0, visfunc, 1])
+
     dark_correct = collect_varb_across_ec([four_b],
-                                          'd', 'Left Traj Percentage', [0, visfunc, 1])
+                                          'd', 'Correct Trajectory Percentage', [0, visfunc, 1])
 
     
 
@@ -3082,6 +3138,13 @@ if __name__ == '__main__':
     dark_AI_sr_test = scipy.stats.wilcoxon(dark_AI)
     
     red_AI_avg = list(map(np.mean, red_AI))
+    red_AI_median = list(map(np.median, red_AI))
+    red_wilcoxons = [scipy.stats.wilcoxon(w) for w in red_AI]
+    doubled_distance_teset = scipy.stats.mannwhitneyu(red_AI[0], red_AI[3])
+
+    pairwise_collision_avoidance_comparison(ec_fourb[0], ec_fourb[1])
+
+
 
     cstart_latencies = collect_varb_across_ec(red_b_list, 'l', 'CStart Latency', [0, visfunc, 1])
     cstart_amplitudes = collect_varb_across_ec(red_b_list, 'l', 'CStart Angle', [0, visfunc, 1])
@@ -3092,7 +3155,7 @@ if __name__ == '__main__':
     pl.show()
 
     fig, ax = pl.subplots(1,1)
-    sns.distplot(ltp_PI, bins=5, ax=ax)
+    sns.distplot(all_n_PI, bins=5, ax=ax)
 #    ax.set_xlim([-1,1])
     
 
@@ -3101,6 +3164,8 @@ if __name__ == '__main__':
 
     ttest_white = [scipy.stats.ttest_1samp(list(map(lambda x: (2*x -1), a)), popmean=0) for a in white_and_virtual_correct]
     wilcoxon_white = [scipy.stats.wilcoxon(list(map(lambda x: (2*x -1), a))) for a in white_and_virtual_correct]
+
+    
 
     white_vs_red = scipy.stats.ttest_ind(list(map(lambda x:(2*x -1), white_and_virtual_correct[0])),
                                          list(map(lambda x:(2*x -1), red_correct[0])))
@@ -3144,7 +3209,8 @@ if __name__ == '__main__':
                                                      False, viswin)
     collision_percentage_by_fish = plot_collision_stat(collision_stats, num_n_trials)
     avg_collision_percentage = [np.mean(x) for x in collision_percentage_by_fish]
-
+    median_collision_percentage = [np.median(x) for x in collision_percentage_by_fish]
+    
     mw_collisions_24_vs_12far = scipy.stats.mannwhitneyu(collision_stats[1], collision_stats[2])
     mw_collisions_12close_vs_24 = scipy.stats.mannwhitneyu(collision_stats[0], collision_stats[1])
 
@@ -3155,27 +3221,50 @@ if __name__ == '__main__':
     plot_all_results([red48mm_8mmdist_ec_2h[0]])
 
     # plotting collision rates and avoidance rates for mauthner
-
-
-#    visfunc = lambda x: (-180 + viswin < x < -viswin) or (
- #       viswin < x < 180-viswin)
-
-    bleft_visfunc = lambda x: (-180 < x < -viswin) 
+    bleft_visfunc = lambda x: (-180 < x < -viswin)
     bright_visfunc = lambda x: (viswin < x < 180)
 
     mauth_l_ec_bleft = experiment_collector(wik_mauthner_l, ['l'],
-                                            [0, bleft_visfunc, 0])
+                                            [0, bleft_visfunc, 0])[0]
     mauth_l_ec_bright = experiment_collector(wik_mauthner_l, ['l'],
-                                             [0, bright_visfunc, 0])
+                                             [0, bright_visfunc, 0])[0]
     mauth_r_ec_bleft = experiment_collector(wik_mauthner_r, ['l'],
-                                            [0, bleft_visfunc, 0])
+                                            [0, bleft_visfunc, 0])[0]
     mauth_r_ec_bright = experiment_collector(wik_mauthner_r, ['l'],
-                                             [0, bright_visfunc, 0])
+                                             [0, bright_visfunc, 0])[0]
 
-    plot_all_results(mauth_r_ec_bright)
+    bai_mauthners_barrierside = list(
+        map(lambda x: (2*x - 1),
+            mauth_l_ec_bleft.escape_data[
+                "Correct Trajectory Percentage"] + mauth_r_ec_bright.escape_data["Correct Trajectory Percentage"]))
 
+    collisions_mauthners_barrierside = mauth_l_ec_bleft.escape_data[
+                "Collision Percentage"] + mauth_r_ec_bright.escape_data["Collision Percentage"]
     
-#    combined_hairplot([mauth_l_ec[1]], 0, 0, 1)
+    bai_mauthners_opposite_barrier = list(
+        map(lambda x: (2*x - 1),
+            mauth_l_ec_bright.escape_data[
+                "Correct Trajectory Percentage"] + mauth_r_ec_bleft.escape_data["Correct Trajectory Percentage"]))
+
+    collisions_mauthners_opposite_barrier = mauth_l_ec_bright.escape_data[
+                "Collision Percentage"] + mauth_r_ec_bleft.escape_data["Collision Percentage"]
+    
+    sns.boxplot(x=np.concatenate((np.zeros(len(bai_mauthners_barrierside)),
+                                      np.ones(len(bai_mauthners_opposite_barrier)))),
+                y=np.concatenate((bai_mauthners_barrierside, bai_mauthners_opposite_barrier)),
+                whis=np.inf, color='darkgray', linewidth=1.5,
+                medianprops=dict(color="maroon", linewidth=1.5, alpha=1))
+
+    sns.boxplot(x=np.concatenate((np.zeros(len(collisions_mauthners_barrierside)),
+                                  np.ones(len(collisions_mauthners_opposite_barrier)))),
+                y=np.concatenate((collisions_mauthners_barrierside, collisions_mauthners_opposite_barrier))
+                whis=np.inf, color='darkgray', linewidth=1.5,
+                medianprops=dict(color="maroon", linewidth=1.5, alpha=1))
+
+                
+
+         
+  
 
     
 
