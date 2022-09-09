@@ -573,15 +573,41 @@ w_coords_wrt_barrier_finite = [c for c in w_coords_wrt_barrier if np.isfinite(c[
 r_coords_wrt_barrier_finite = [c for c in r_coords_wrt_barrier if np.isfinite(c[0])]
 coordmag_distribution_w = list(map(lambda x: np.round(.053 * np.linalg.norm(x) - 3, 2), w_coords_wrt_barrier_finite))
 coordmag_distribution_r = list(map(lambda x: np.round(.053 * np.linalg.norm(x) - 3, 2), r_coords_wrt_barrier_finite))
-sb.distplot(coordmag_distribution_w)
-sb.distplot(coordmag_distribution_r)
+
+
+
+
+#sb.histplot(coordmag_distribution_w, binwidth=.25, binrange=[0,10])
+#sb.histplot(coordmag_distribution_r, binwidth=.25, binrange=[0,10])
+
+#.25 width bins. divide each value in whitehist and redhist by
+# the area of the bin. area of the bin is pi*(3+
+
+whitehist = pl.hist(coordmag_distribution_w, bins=40, range=[0, 10])
+redhist = pl.hist(coordmag_distribution_r, bins=40, range=[0, 10])
+
+binsizes = whitehist[1]
+bin_normalizers = [np.pi*(b**2) - np.pi*(a**2) for a, b in sliding_window(2, binsizes)]
+
+whitehist_areanorm = [x / n for x, n in zip(whitehist[0], bin_normalizers)]
+redhist_areanorm = [x / n for x, n in zip(redhist[0], bin_normalizers)]
+
+whitehist_norm = whitehist_areanorm / sum(whitehist_areanorm)
+redhist_norm = redhist_areanorm / sum(redhist_areanorm)
+
+fig, ax = pl.subplots(1, 1)
+ax.bar(binsizes[1:], height=whitehist_norm, width = .25, color='.5', edgecolor='.5', alpha=.8)
+ax.bar(binsizes[1:], height=redhist_norm, width= .25, color='r', edgecolor='r', alpha=.8)
+
+ax.set_ylim(0, np.max(whitehist_norm)+.05)
+pl.show()
+
 print(np.median(coordmag_distribution_w))
 print(np.median(coordmag_distribution_r))
 print(scipy.stats.mode(coordmag_distribution_w))
 print(scipy.stats.mode(coordmag_distribution_r))
 
 print(scipy.stats.mannwhitneyu(coordmag_distribution_w, coordmag_distribution_r))
-pl.show()
 
 
 

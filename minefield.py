@@ -3257,7 +3257,7 @@ if __name__ == '__main__':
 
     sns.boxplot(x=np.concatenate((np.zeros(len(collisions_mauthners_barrierside)),
                                   np.ones(len(collisions_mauthners_opposite_barrier)))),
-                y=np.concatenate((collisions_mauthners_barrierside, collisions_mauthners_opposite_barrier))
+                y=np.concatenate((collisions_mauthners_barrierside, collisions_mauthners_opposite_barrier)),
                 whis=np.inf, color='darkgray', linewidth=1.5,
                 medianprops=dict(color="maroon", linewidth=1.5, alpha=1))
 
