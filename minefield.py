@@ -27,6 +27,7 @@ from matplotlib.colors import Colormap
 from scipy.ndimage import median_filter
 import pdb
 import matplotlib
+%matplotlib qt
 
 
 # This is the main class for this program.
@@ -432,13 +433,16 @@ class Condition_Collector:
             #         np.array(escape_obj.stim_times_accurate).astype(np.bool)[trialfilter]].tolist()
             self.escape_data[
                 'CStart Latency'] += np.array(escape_obj.escape_latencies)[trialfilter][
-                    np.array(escape_obj.stim_times_accurate).astype(np.bool)[trialfilter]].tolist()
+                    np.array(escape_obj.stim_times_accurate).astype(bool)[trialfilter]].tolist()
 
             
     def convert_to_nparrays(self):
         np_array_dict = {}
         for ky, it in self.escape_data.items():
-            np_array_dict[ky] = np.array(it)
+            try:
+                np_array_dict[ky] = np.array(it)
+            except ValueError:
+                print('hey man')
         return np_array_dict
 
 
@@ -485,7 +489,7 @@ class Escapes:
             try:
                 self.numgrayframes = np.loadtxt(
                     directory + '/numframesgray_n.txt',
-                    dtype='str').astype(np.int)
+                    dtype='str').astype(int)
                 self.barrier_file = np.loadtxt(
                     directory + '/barrierstruct_n.txt',
                     dtype='str')
@@ -504,11 +508,11 @@ class Escapes:
         if exp_type == 'l':
             self.numgrayframes = np.loadtxt(
                 directory + '/numframesgray_' + bstruct_and_br_label + '.txt',
-                dtype='str').astype(np.int)
+                dtype='str').astype(int)
         elif exp_type == 'd':
             self.numgrayframes = np.loadtxt(
                 directory + '/numframesgray_dark.txt',
-                dtype='str').astype(np.int)
+                dtype='str').astype(int)
             
         self.barrier_coordinates = []
         self.barrier_diam = 0
@@ -827,7 +831,7 @@ class Escapes:
                 fish_xy_moments = cv2.moments(fishcont)
                 fish_com_x = int(fish_xy_moments['m10']/fish_xy_moments['m00'])
                 fish_com_y = int(fish_xy_moments['m01']/fish_xy_moments['m00'])
-                fishcont_middle = np.mean(fishcont, axis=0)[0].astype(np.int)
+                fishcont_middle = np.mean(fishcont, axis=0)[0].astype(int)
                 fish_middle_x = fishcont_middle[0]
                 fish_middle_y = fishcont_middle[1]
                 cv2.circle(im_color, (fish_com_x, fish_com_y), 1, (255, 0, 0), 1)
@@ -1246,7 +1250,7 @@ class Escapes:
             for cont in cont_list:
                 rect = cv2.minAreaRect(cont)
                 box = cv2.boxPoints(rect)
-                xcont, ycont = np.mean(box, axis=0).astype(np.int)
+                xcont, ycont = np.mean(box, axis=0).astype(int)
                 vec_dist = [xy_center[0] - xcont, xy_center[1] - ycont]
                 if magvector(vec_dist) < 10:
                     return cont, xcont, ycont
@@ -1255,8 +1259,11 @@ class Escapes:
         # try dilate 5x5. works ok with 250.
         xy_cent = [40, 40]
         r, th = cv2.threshold(im, threshval, 255, cv2.THRESH_BINARY)
-        rim, contours, hierarchy = cv2.findContours(
+#        rim, contours, hierarchy = cv2.findContours(
+ #           th, cv2.RETR_LIST, cv2.CHAIN_APPROX_NONE)
+        contours, hierarchy = cv2.findContours(
             th, cv2.RETR_LIST, cv2.CHAIN_APPROX_NONE)
+
         contours = sorted(contours, key=cv2.contourArea, reverse=True)
         areamin = self.area_thresh
         areamax = 100
@@ -2046,7 +2053,7 @@ def hairplot_heatmap(ec_list, *combine_maps):
                                 [y[1] for y in traj_coords_bleft],
                                 range = [[-xbound, xbound], [-ybound, ybound]],
                                 bins=[hm_bins_x, hm_bins_y], density=False)
-            bins_visited = (hm[0] != 0).astype(np.int)
+            bins_visited = (hm[0] != 0).astype(int)
             bleft_matrix += bins_visited
 
         for br_coords in ec_data['Barrier On Right Trajectories']:
@@ -2072,7 +2079,7 @@ def hairplot_heatmap(ec_list, *combine_maps):
                                     [y[1] for y in traj_coords_bright],
                                     range = [[-xbound, xbound], [-ybound, ybound]],
                                     bins=[hm_bins_x, hm_bins_y], density=False)
-            bins_visited = (hm[0] != 0).astype(np.int)
+            bins_visited = (hm[0] != 0).astype(int)
             bright_matrix += bins_visited
 
         
@@ -2545,7 +2552,8 @@ def experiment_collector(drct_list, cond_list, filter_settings, *new_exps):
             pass
     if new_exps != ():
         new_exps = new_exps[0]
-    os.chdir('/Volumes/Esc_and_2P/Escape_Results')
+ #   os.chdir('/Volumes/Esc_and_2P/Escape_Results')
+    os.chdir('/Users/nightcrawler/Google Drive/My Drive/farhana_tap_data/ANDREW_20tap_escapes/')
 #    os.chdir('/Volumes/Seagate/AndrewTestData/')
     for newexp_dirct in new_exps:
         fish_id = '/' + newexp_dirct
@@ -2556,7 +2564,8 @@ def experiment_collector(drct_list, cond_list, filter_settings, *new_exps):
         
         area_thresh = 47
 #        esc_dir = os.getcwd() + fish_id
-        esc_dir = '/Volumes/Esc_and_2P/Escape_Results' + fish_id
+#        esc_dir = '/Volumes/Esc_and_2P/Escape_Results' + fish_id
+        esc_dir = '/Users/nightcrawler/Google Drive/My Drive/farhana_tap_data/ANDREW_20tap_escapes/' + fish_id
 #        esc_dir = '/Volumes/Seagate/AndrewTestData' + fish_id
         print(esc_dir)
         plotcstarts = False
@@ -2573,7 +2582,8 @@ def experiment_collector(drct_list, cond_list, filter_settings, *new_exps):
 # CATCH FOR SPLITTING ACCORDING TO TRIAL GOES HERE. 
             
     for drct in drct_list:
-        drct = '/Volumes/Esc_and_2P/Escape_Results/' + drct
+    #    drct = '/Volumes/Esc_and_2P/Escape_Results/' + drct
+        drct = '/Users/nightcrawler/Google Drive/My Drive/farhana_tap_data/ANDREW_20tap_escapes/' + drct
 #        drct = '/Volumes/Seagate/AndrewTestData/' + drct
         for cond_ind, cond_collector in enumerate(cond_collector_list):
             try:
@@ -2773,495 +2783,594 @@ def pairwise_collision_avoidance_comparison(ec1, ec2):
 if __name__ == '__main__':
 
     # second to last number is the condition
-
-    daniel0 = ['010100_1', '010100_2', '010100_3', '010100_4', '010100_5',
-               '010100_6', '010100_7', '010100_8', '010100_9', '010200_9',
-               '010200_1', '010200_2', '010200_3', '010200_4', '010200_5',
-               '010200_6', '010200_7', '010200_8', '010300_1', '010300_2']
-               
-            
-               
-    daniel1 = ['010101_1', '010101_2', '010101_3', '010101_4', '010101_5',
-               '010101_6', '010101_7', '010101_8', '010101_9', '010201_1',
-               '010201_2', '010201_3', '010201_4', '010201_5', '010201_6',
-               '010201_7', '010201_8', '010201_9', '010301_1', '010301_2']
-               
-    daniel2 = ['010102_1', '010102_2', '010102_3', '010102_4', '010102_5',
-               '010102_6', '010102_7', '010102_8', '010102_9', '010302_1',
-               '010302_2']
-
-
-    daniel3 = ['010203_1', '010203_2', '010203_3', '010203_4', '010203_5',
-               '010203_6', '010203_7', '010203_8', '010203_9']
-              
-    
-    # VIRTUAL BARRIERS
-    virtual = ['091119_4', '091019_1', '091019_2', '091119_1', '091119_2',
-               '091119_3', '091119_5', '091319_1', '091319_2', '091319_3',
-               '091319_4', '092719_1', '092719_2', '092719_3', '092719_4',
-               '100219_1', '100219_2', '100219_3', '100219_4', '100219_6',
-               '100219_7', '100219_5']
-
-    four_w = ['072319_1', '072319_2', '072319_3', '072319_4',
-              '072319_5', '072319_6', '072319_7', '072419_3',
-              '072419_4', '072419_5', '072419_6', '072419_7',
-              '072419_8', '072419_9', '072519_1', '072619_1',
-              '072619_2', '072619_3', '072619_4']
-
-    # [0, 0, 0, 
-    
-    four_b = ['022619_2', '030519_1', '030519_2', '030719_1',
-              '030719_2', '030719_3', '032619_1', '032819_1',
-              '032919_1', '040319_1', '040419_2', '040519_2',
-              '041719_1', '041819_1', '041919_2', '042319_1',
-              '042719_1', '102319_1', '102319_2', '102419_1',
-              '102519_1', '110219_1', '110219_2']
-
-    wik_mauthner_l = ['052721_1', '060421_1',
-                      '060421_3', '060421_4', '060421_5',
-                      '021320_1', '021320_2', '021320_3',
-                      '022120_1', '022120_2', '022120_3', '061021_1',
-                      '061021_3', '061021_6']
-
-    wik_mauthner_r = ['052721_2', '052721_3', '052821_2', '052821_3',
-                      '052821_4', '060321_1', '060321_2',
-                      '060321_4', '060321_5', '060321_6', '060321_7',
-                      '060421_8', '061021_4', '061021_5']
-    
-
-    # 0 is l first, 1 is n first
-    # [1, 1, 1, 1, 1, 1, 1, 1,  
-    
-    red24mm_4mmdist = ['061121_1', '061121_2', '061121_3', '061121_4',
-                       '061121_5', '061121_6', '061121_7', '061421_1',
-                       '061421_2', '061421_3', 
-                       '061521_2', '061521_3', '061521_4', '061521_5',
-                       '061521_6']
-
-    
-    red12mm_4mmdist = ["061721_1", "061721_2", "061721_3", "061721_4", "061721_5",
-                       "061721_6", "061721_7", "061821_1", "061821_2", "061821_3", 
-                       "061821_4", "061821_5", "061821_6",  "062221_1", "062221_2",
-                       "062221_3", "062221_4", "062221_5", "062221_6"]
-
-
-
-    red48mm_8mmdist = ["062521_3", "062521_4", "063021_2",
-                       "063021_3", "063021_4", "063021_5",
-                       "063021_6", "070121_1", "070121_2", 
-                       "070221_4", "070221_5", "070221_6", "070621_4",
-                       "070721_4", "070721_5", "070721_6", "070921_2",
-                       "070921_4"]
-
-    # started getting rid of fish where the taps weren't happening here, but then
-    # wrote a filter for LED hits into the analysis. 
-    
-    red48mm_8mmdist_2h = [#"070821_1", "070821_2", "070821_8", "070821_9",
-        #                  "070921_6",
-                          "071221_1", #"071221_2",  "071221_9"
-
-                          #note that 7/8 and 7/9 appear to have no taps! 1221_3 has taps and cstarts,                            # 1221_9 also has no taps. 
-                          "071221_3",
-                          "071221_5", "071221_6", "071221_7", "071221_8",
-                          "071321_3", "071421_1", "071421_2",
-                          "071421_3", "071421_4", "071421_5", "071421_7"]
-
-
-    red12mm_4mmdist_2h = ["072921_1", "072921_2", "072921_4", "073021_1",
-                          "073021_2", "073021_3", "073021_4", "073021_5",
-                          "073021_7", "073021_8", "073021_9", "080221_2",
-                          "080221_3", "080221_4", "080221_5", "080221_6",
-                          "080221_7", "080321_1", "080321_2", "080321_3"]
-
-
-
-    # 15 feels right. not really enough data in the 5 wins for conclusive results, and
-    # spreading to 15 puts enough data for clear error bars. if you bin by 5, the 15 degree
-    # window is already at 80% in four_b. 10 is definitely too close.
-
-    # TO DO NEXT: make sure your h to b plots are right. they are so consistent that they must be
-    # revealing something fundamental. good work today though!
-
-
-    # h_vs_b_plot is completely correct as long as the angle calculations are good. bout that lead into the
-    # barrier zone is calculated by taking the gray coords right before barrierzone entry. 
-    
-    white_and_virtual_list = [four_w, virtual, virtual]
-    red_b_list = [four_b, red24mm_4mmdist, red12mm_4mmdist_2h, red12mm_4mmdist, red48mm_8mmdist_2h, red48mm_8mmdist]
-     
     viswin = 25
 #    visfunc = lambda x: (-180 + viswin < x < -viswin) or (
  #       viswin < x < 180-viswin)
 
     visfunc = lambda x: (-180 < x < -viswin) or (viswin < x < 180)
+
+
+    MFQ_control_fish = ['082022_0', '082022_2', '082022_4', '082022_6', '082022_8', '182022_2',
+                        '182022_4', '182022_6']
     
-   # for w in wik_mauthner_r:
-    #    mec = experiment_collector([w], ['n'],
-     #                              [0, visfunc, 0])
-      #  combined_hairplot(mec, 0, 0, 1)
+    MFQ_fish = ['082022_1', '082022_3', '082022_5', '082022_7', '082022_9', '182022_1',
+                '182022_3', '182022_5']
+
+    MFA_control_fish = ['081522_2', '081522_4', '081522_6', '081522_8', '083122_2', '083122_4',
+                        '083122_6', '083122_8']
+    
+    MFA_fish = ['081522_1', '081522_3', '081522_5', '081522_7', '083122_1', '083122_3',
+                '083122_5', '083122_7']
+
+    
+    control_fish = ['041122_1', '041122_2', '041122_3', '041122_4', '041122_5', '041122_6',
+                    '041822_1', '041822_2', '041822_3', '041822_4', '041822_5', '041822_6',
+                    '042622_1', '042622_2', '042622_3', '042622_4', '042622_5', '042622_6']
+    
+    GBM_fish = ['141122_1', '141122_2', '141122_3', '141122_4', '141122_5', '141122_6',
+                '141822_1', '141822_2', '141822_3', '141822_4', '141822_5', '141822_6',
+                '142622_1', '142622_2', '142622_3', '142622_4', '142622_5', '142622_6']
+    
+    T293_fish = ['241122_1', '241122_2', '241122_3', '241122_4', '241122_5', '241122_6',
+                 '241822_1', '241822_2', '241822_3', '241822_4', '241822_5', '241822_6',
+                 '242622_1', '242622_2', '242622_3', '242622_4', '242622_5', '242622_6']
+
+    control_fish_collector = experiment_collector(control_fish, ['l', 'n'], [0, visfunc, 1]) #control_fish)
+    GBM_fish_collector = experiment_collector(GBM_fish, ['l', 'n'], [0, visfunc, 1]) #GBM_fish)
+    T293_fish_collector = experiment_collector(T293_fish, ['l', 'n'], [0, visfunc, 1]) #T293_fish)
+
+    MFA_control_fish_collector = experiment_collector(MFA_control_fish, ['l', 'n'], [0, visfunc, 1]) #MFA_control_fish)
+    MFQ_control_fish_collector = experiment_collector(MFQ_control_fish, ['l', 'n'], [0, visfunc, 1]) #MFQ_control_fish)
+    MFA_fish_collector = experiment_collector(MFA_fish, ['l', 'n'], [0, visfunc, 1]) #MFA_fish)
+    MFQ_fish_collector = experiment_collector(MFQ_fish, ['l', 'n'], [0, visfunc, 1]) #MFQ_fish)
+
+    combined_hairplot([MFA_control_fish_collector[1]], 0, 0, .7)
+    combined_hairplot([MFQ_control_fish_collector[1]], 0, 0, .7)
+    combined_hairplot([MFA_fish_collector[1]], 0, 0, .7)
+    combined_hairplot([MFQ_fish_collector[1]], 0, 0, .7)
+
+    # plot_all_results(MFQ_control_fish_collector)
+    # plot_all_results(MFQ_fish_collector)
+    # plot_all_results(MFA_fish_collector)
+
+    # combined_hairplot([GBM_fish_collector[1]], 0, 0, .7)
+    # combined_hairplot([T293_fish_collector[1]], 0, 0, .7)
+    
+    
+    combined_hairplot([control_fish_collector[1]], 0, 0, .7)
+    combined_hairplot([GBM_fish_collector[1]], 0, 0, .7)
+    combined_hairplot([T293_fish_collector[1]], 0, 0, .7)
+
+    plot_all_results(control_fish_collector)
+    plot_all_results(GBM_fish_collector)
+    plot_all_results(T293_fish_collector)
+    hairplot_heatmap([GBM_fish_collector[1]], 1)
+    hairplot_heatmap([T293_fish_collector[1]], 1)
+    hairplot_heatmap([control_fish_collector[1]], 1)
+
+    ltp_farhana_control = collect_varb_across_ec([control_fish], 
+                                                 'n', 'Left Traj Percentage', [0, visfunc, 1])
+    ltp_farhana_GBM = collect_varb_across_ec([GBM_fish], 
+                                             'n', 'Left Traj Percentage', [0, visfunc, 1])
+    ltp_farhana_T293 = collect_varb_across_ec([T293_fish], 
+                                              'n', 'Left Traj Percentage', [0, visfunc, 1])
+
+    scipy.stats.ttest_1samp(ltp_farhana_control[0], popmean=.5)
+    scipy.stats.ttest_1samp(ltp_farhana_GBM[0], popmean=.5)
+    scipy.stats.ttest_1samp(ltp_farhana_T293[0], popmean=.5)
+
+    print(scipy.stats.ttest_ind(ltp_farhana_T293[0], ltp_farhana_GBM[0]))
+    print(scipy.stats.ttest_ind(ltp_farhana_T293[0], ltp_farhana_control[0]))
+    print(scipy.stats.ttest_ind(ltp_farhana_GBM[0], ltp_farhana_control[0]))
+
+    cstart_amplitudes_control = collect_varb_across_ec([control_fish], 'n', 'CStart Angle', [0, visfunc, 1])
+    cstart_amplitudes_GBM = collect_varb_across_ec([GBM_fish], 'n', 'CStart Angle', [0, visfunc, 1])
+    cstart_amplitudes_T293 = collect_varb_across_ec([T293_fish], 'n', 'CStart Angle', [0, visfunc, 1])
+
+    print(scipy.stats.ttest_ind(cstart_amplitudes_GBM[0], cstart_amplitudes_T293[0]))
+    print(scipy.stats.ttest_ind(cstart_amplitudes_GBM[0], cstart_amplitudes_control[0]))
+    print(scipy.stats.ttest_ind(cstart_amplitudes_control[0], cstart_amplitudes_T293[0]))
+    
+    
+   #  daniel0 = ['010100_1', '010100_2', '010100_3', '010100_4', '010100_5',
+#                '010100_6', '010100_7', '010100_8', '010100_9', '010200_9',
+#                '010200_1', '010200_2', '010200_3', '010200_4', '010200_5',
+#                '010200_6', '010200_7', '010200_8', '010300_1', '010300_2']
+               
+            
+               
+#     daniel1 = ['010101_1', '010101_2', '010101_3', '010101_4', '010101_5',
+#                '010101_6', '010101_7', '010101_8', '010101_9', '010201_1',
+#                '010201_2', '010201_3', '010201_4', '010201_5', '010201_6',
+#                '010201_7', '010201_8', '010201_9', '010301_1', '010301_2']
+               
+#     daniel2 = ['010102_1', '010102_2', '010102_3', '010102_4', '010102_5',
+#                '010102_6', '010102_7', '010102_8', '010102_9', '010302_1',
+#                '010302_2']
 
 
-#    daniel0_ec = experiment_collector(daniel0, ['n'], [0, visfunc, 0])
-#    daniel1_ec = experiment_collector(daniel1, ['n'], [0, visfunc, 0])
+#     daniel3 = ['010203_1', '010203_2', '010203_3', '010203_4', '010203_5',
+#                '010203_6', '010203_7', '010203_8', '010203_9']
+              
+    
+#     # VIRTUAL BARRIERS
+#     virtual = ['091119_4', '091019_1', '091019_2', '091119_1', '091119_2',
+#                '091119_3', '091119_5', '091319_1', '091319_2', '091319_3',
+#                '091319_4', '092719_1', '092719_2', '092719_3', '092719_4',
+#                '100219_1', '100219_2', '100219_3', '100219_4', '100219_6',
+#                '100219_7', '100219_5']
 
-    # daniel_ec = experiment_collector(daniel1, ['n'], [0, visfunc, 0])
-#    combined_hairplot([daniel0_ec[0]], 0, 0, .7)
-#    combined_hairplot([daniel1_ec[0]], 0, 0, .7)
+#     four_w = ['072319_1', '072319_2', '072319_3', '072319_4',
+#               '072319_5', '072319_6', '072319_7', '072419_3',
+#               '072419_4', '072419_5', '072419_6', '072419_7',
+#               '072419_8', '072419_9', '072519_1', '072619_1',
+#               '072619_2', '072619_3', '072619_4']
+
+#     # [0, 0, 0, 
+    
+#     four_b = ['022619_2', '030519_1', '030519_2', '030719_1',
+#               '030719_2', '030719_3', '032619_1', '032819_1',
+#               '032919_1', '040319_1', '040419_2', '040519_2',
+#               '041719_1', '041819_1', '041919_2', '042319_1',
+#               '042719_1', '102319_1', '102319_2', '102419_1',
+#               '102519_1', '110219_1', '110219_2']
+
+#     wik_mauthner_l = ['052721_1', '060421_1',
+#                       '060421_3', '060421_4', '060421_5',
+#                       '021320_1', '021320_2', '021320_3',
+#                       '022120_1', '022120_2', '022120_3', '061021_1',
+#                       '061021_3', '061021_6']
+
+#     wik_mauthner_r = ['052721_2', '052721_3', '052821_2', '052821_3',
+#                       '052821_4', '060321_1', '060321_2',
+#                       '060321_4', '060321_5', '060321_6', '060321_7',
+#                       '060421_8', '061021_4', '061021_5']
+    
+
+#     # 0 is l first, 1 is n first
+#     # [1, 1, 1, 1, 1, 1, 1, 1,  
+    
+#     red24mm_4mmdist = ['061121_1', '061121_2', '061121_3', '061121_4',
+#                        '061121_5', '061121_6', '061121_7', '061421_1',
+#                        '061421_2', '061421_3', 
+#                        '061521_2', '061521_3', '061521_4', '061521_5',
+#                        '061521_6']
+
+    
+#     red12mm_4mmdist = ["061721_1", "061721_2", "061721_3", "061721_4", "061721_5",
+#                        "061721_6", "061721_7", "061821_1", "061821_2", "061821_3", 
+#                        "061821_4", "061821_5", "061821_6",  "062221_1", "062221_2",
+#                        "062221_3", "062221_4", "062221_5", "062221_6"]
+
+
+
+#     red48mm_8mmdist = ["062521_3", "062521_4", "063021_2",
+#                        "063021_3", "063021_4", "063021_5",
+#                        "063021_6", "070121_1", "070121_2", 
+#                        "070221_4", "070221_5", "070221_6", "070621_4",
+#                        "070721_4", "070721_5", "070721_6", "070921_2",
+#                        "070921_4"]
+
+#     # started getting rid of fish where the taps weren't happening here, but then
+#     # wrote a filter for LED hits into the analysis. 
+    
+#     red48mm_8mmdist_2h = [#"070821_1", "070821_2", "070821_8", "070821_9",
+#         #                  "070921_6",
+#                           "071221_1", #"071221_2",  "071221_9"
+
+#                           #note that 7/8 and 7/9 appear to have no taps! 1221_3 has taps and cstarts,                            # 1221_9 also has no taps. 
+#                           "071221_3",
+#                           "071221_5", "071221_6", "071221_7", "071221_8",
+#                           "071321_3", "071421_1", "071421_2",
+#                           "071421_3", "071421_4", "071421_5", "071421_7"]
+
+
+#     red12mm_4mmdist_2h = ["072921_1", "072921_2", "072921_4", "073021_1",
+#                           "073021_2", "073021_3", "073021_4", "073021_5",
+#                           "073021_7", "073021_8", "073021_9", "080221_2",
+#                           "080221_3", "080221_4", "080221_5", "080221_6",
+#                           "080221_7", "080321_1", "080321_2", "080321_3"]
+
+
+
+#     # 15 feels right. not really enough data in the 5 wins for conclusive results, and
+#     # spreading to 15 puts enough data for clear error bars. if you bin by 5, the 15 degree
+#     # window is already at 80% in four_b. 10 is definitely too close.
+
+#     # TO DO NEXT: make sure your h to b plots are right. they are so consistent that they must be
+#     # revealing something fundamental. good work today though!
+
+
+#     # h_vs_b_plot is completely correct as long as the angle calculations are good. bout that lead into the
+#     # barrier zone is calculated by taking the gray coords right before barrierzone entry. 
+    
+#     white_and_virtual_list = [four_w, virtual, virtual]
+#     red_b_list = [four_b, red24mm_4mmdist, red12mm_4mmdist_2h, red12mm_4mmdist, red48mm_8mmdist_2h, red48mm_8mmdist]
+     
+#     viswin = 25
+# #    visfunc = lambda x: (-180 + viswin < x < -viswin) or (
+#  #       viswin < x < 180-viswin)
+
+#     visfunc = lambda x: (-180 < x < -viswin) or (viswin < x < 180)
+    
+#    # for w in wik_mauthner_r:
+#     #    mec = experiment_collector([w], ['n'],
+#      #                              [0, visfunc, 0])
+#       #  combined_hairplot(mec, 0, 0, 1)
+
+
+# #    daniel0_ec = experiment_collector(daniel0, ['n'], [0, visfunc, 0])
+# #    daniel1_ec = experiment_collector(daniel1, ['n'], [0, visfunc, 0])
+
+#     # daniel_ec = experiment_collector(daniel1, ['n'], [0, visfunc, 0])
+# #    combined_hairplot([daniel0_ec[0]], 0, 0, .7)
+# #    combined_hairplot([daniel1_ec[0]], 0, 0, .7)
 
       
 
-    mauth_l_ec = experiment_collector(wik_mauthner_l, ['l', 'n'],
-                                      [0, visfunc, 0])
-#    combined_hairplot([mauth_l_ec[1]], 0, 0, 1)
+#     mauth_l_ec = experiment_collector(wik_mauthner_l, ['l', 'n'],
+#                                       [0, visfunc, 0])
+# #    combined_hairplot([mauth_l_ec[1]], 0, 0, 1)
         
-    mauth_r_ec = experiment_collector(wik_mauthner_r, ['l', 'n'],
-                                      [0, visfunc, 0])
-    pairwise_l_to_n_PI_mauth(mauth_l_ec, mauth_r_ec)
+#     mauth_r_ec = experiment_collector(wik_mauthner_r, ['l', 'n'],
+#                                       [0, visfunc, 0])
+#     pairwise_l_to_n_PI_mauth(mauth_l_ec, mauth_r_ec)
 
 
-    combined_hairplot([mauth_l_ec[0]], 0, 0, .7)
-    combined_hairplot([mauth_r_ec[0]], 0, 0, .7)
-    combined_hairplot([mauth_l_ec[1]], 0, 0, .7)
-    combined_hairplot([mauth_r_ec[1]], 0, 0, .7)
+#     combined_hairplot([mauth_l_ec[0]], 0, 0, .7)
+#     combined_hairplot([mauth_r_ec[0]], 0, 0, .7)
+#     combined_hairplot([mauth_l_ec[1]], 0, 0, .7)
+#     combined_hairplot([mauth_r_ec[1]], 0, 0, .7)
+
+
     
     
 
-    mauth_r_ltp = collect_varb_across_ec(
-        [wik_mauthner_r], 'n', 'Left Traj Percentage', [0, visfunc, 0])
+#     mauth_r_ltp = collect_varb_across_ec(
+#         [wik_mauthner_r], 'n', 'Left Traj Percentage', [0, visfunc, 0])
 
-    mauth_l_ltp = collect_varb_across_ec(
-        [wik_mauthner_l], 'n', 'Left Traj Percentage', [0, visfunc, 0])
+#     mauth_l_ltp = collect_varb_across_ec(
+#         [wik_mauthner_l], 'n', 'Left Traj Percentage', [0, visfunc, 0])
 
-    all_ltp = collect_varb_across_ec(red_b_list+white_and_virtual_list[0:2],
-                                     'n', 'Left Traj Percentage', [0, visfunc, 1])
+#     all_ltp = collect_varb_across_ec(red_b_list+white_and_virtual_list[0:2],
+#                                      'n', 'Left Traj Percentage', [0, visfunc, 1])
 
 
 
-    # STATISTIC 1 -- 
-    all_n_PI = list(map(lambda x: -1*(2*x - 1), np.concatenate(all_ltp)))
-    print(np.mean(all_n_PI))
-    print(np.median(all_n_PI))
-    all_n_wilcoxon = scipy.stats.wilcoxon(all_n_PI)
+#     # STATISTIC 1 -- 
+#     all_n_PI = list(map(lambda x: -1*(2*x - 1), np.concatenate(all_ltp)))
+#     print(np.mean(all_n_PI))
+#     print(np.median(all_n_PI))
+#     all_n_wilcoxon = scipy.stats.wilcoxon(all_n_PI)
 
     
-    mauthner_l_PI = list(map(lambda x: (2*x - 1), mauth_l_ltp[0]))
-    mauthner_r_PI = list(map(lambda x: -1*(2*x - 1), mauth_r_ltp[0]))
-#    mauthner_r_PI = list(map(lambda x: (2*x - 1), mauth_r_ltp[0]))
-    mauthner_all = mauthner_l_PI + mauthner_r_PI
+#     mauthner_l_PI = list(map(lambda x: (2*x - 1), mauth_l_ltp[0]))
+#     mauthner_r_PI = list(map(lambda x: -1*(2*x - 1), mauth_r_ltp[0]))
+# #    mauthner_r_PI = list(map(lambda x: (2*x - 1), mauth_r_ltp[0]))
+#     mauthner_all = mauthner_l_PI + mauthner_r_PI
     
     
-    cpal = sns.color_palette('husl', 8)
-    cpal2 = sns.color_palette('hls', 8)
-    fig, ax = pl.subplots(1, 1)
-    sns.set(style="ticks", rc={"lines.linewidth": 1})
-    sns.kdeplot(all_n_PI,
-               color=cpal2[0], clip=[-1, 1], ax=ax)
+#     cpal = sns.color_palette('husl', 8)
+#     cpal2 = sns.color_palette('hls', 8)
+#     fig, ax = pl.subplots(1, 1)
+#     sns.set(style="ticks", rc={"lines.linewidth": 1})
+#     sns.kdeplot(all_n_PI,
+#                color=cpal2[0], clip=[-1, 1], ax=ax)
 
-    sns.kdeplot(mauthner_l_PI,
-               clip=[-1, 1], ax=ax, color=cpal[3])
-    sns.kdeplot(mauthner_r_PI, 
-               clip=[-1, 1], ax=ax, color=cpal[1])
- #   sns.kdeplot(mauthner_all, 
-  #             clip=[-1, 1], ax=ax, color=cpal[1])
+#     sns.kdeplot(mauthner_l_PI,
+#                clip=[-1, 1], ax=ax, color=cpal[3])
+#     sns.kdeplot(mauthner_r_PI, 
+#                clip=[-1, 1], ax=ax, color=cpal[1])
+#  #   sns.kdeplot(mauthner_all, 
+#   #             clip=[-1, 1], ax=ax, color=cpal[1])
 
-    pl.show()
-    ax.set_xlim([-1, 1])
-    p_n_to_l = ttest_ind(all_n_PI, mauthner_l_PI)
-    p_n_to_r = ttest_ind(all_n_PI, mauthner_r_PI)
-    PI_means = list(map(np.mean, [all_n_PI, mauthner_l_PI, mauthner_r_PI]))
-    PI_stds = list(map(np.std, [all_n_PI, mauthner_l_PI, mauthner_r_PI]))
+#     pl.show()
+#     ax.set_xlim([-1, 1])
+#     p_n_to_l = ttest_ind(all_n_PI, mauthner_l_PI)
+#     p_n_to_r = ttest_ind(all_n_PI, mauthner_r_PI)
+#     PI_means = list(map(np.mean, [all_n_PI, mauthner_l_PI, mauthner_r_PI]))
+#     PI_stds = list(map(np.std, [all_n_PI, mauthner_l_PI, mauthner_r_PI]))
 
-    PI_medians = list(map(np.median, [all_n_PI, mauthner_l_PI, mauthner_r_PI]))
-    PI_iqls = [np.quantile(x, [0, .25, .5, .75, 1]) for x in [all_n_PI, mauthner_l_PI, mauthner_r_PI]]
+#     PI_medians = list(map(np.median, [all_n_PI, mauthner_l_PI, mauthner_r_PI]))
+#     PI_iqls = [np.quantile(x, [0, .25, .5, .75, 1]) for x in [all_n_PI, mauthner_l_PI, mauthner_r_PI]]
 
-# #    
-    ecs_virtual = experiment_collector(virtual, ['v', 'i', 'n'], [0, visfunc, 1])
-    ec_fourb = experiment_collector(four_b, ['l', 'd', 'n'],
-                                    [0, visfunc, 1])
-    ec_fourw = experiment_collector(four_w, ['l', 'n'],
-                                    [0, visfunc, 1])
+# # #    
+#     ecs_virtual = experiment_collector(virtual, ['v', 'i', 'n'], [0, visfunc, 1])
+#     ec_fourb = experiment_collector(four_b, ['l', 'd', 'n'],
+#                                     [0, visfunc, 1])
+#     ec_fourw = experiment_collector(four_w, ['l', 'n'],
+#                                     [0, visfunc, 1])
+# #     plot_all_results(ec_fourb)
+
+#     hairplot_heatmap([ec_fourb[0]], 2)
+#     hairplot_heatmap([ec_fourb[1]], 2)
+#     hairplot_heatmap([ec_fourb[2]], 1)
+    
+#     hairplot_heatmap([ec_fourw[0]], 2)
+
+# #     hairplot_collisionmap(ec_fourb[0], ec_fourb[1], 1)
+
+# #    vb = correct_traj_by_visual_window(four_b + four_w, 15, lambda x: 2*x - 1, ['l', 'd'])
+#     vb = correct_traj_by_visual_window(four_b, 25, lambda x: 2*x - 1, ['l', 'd'])
+#     vw = correct_traj_by_visual_window(four_w, 25, lambda x: 2*x - 1, ['l'])
+
+
+# #    vb = correct_traj_by_visual_window(four_b, 25, lambda x: 2*x - 1, ['l', 'd'])
+# #    vw = correct_traj_by_visual_window(four_w, 25, lambda x: 2*x - 1, ['l'])
+
+
+    
+# #     #     # use barrier on the left for light and dark. then use 2d histograms close in
+# # #     # for N trials, L Trials and D trials. Show the heading to barrier plot and
+# # #     # make sure it is correct. Say because we saw a significant difference in approach angle, we
+# # #     # wondered whether the correct trajectory rate held across retinal occupancies. It didn't.
+# # #     # We used the 20 window. Show heatplots for all of these. 
+
+#     # each virtual fish is used for red and white trials, so only use white and one virtual for n trials
+#     all_n_coords, all_n_ec = get_n_trajectories(red_b_list + white_and_virtual_list[0:2])
+#     # args are order by length, invert by barrier, and alpha
+#     ltp_n = combined_hairplot(all_n_ec, 0, 0, .7)
+
+#     # first arg is order by length. second is flip over the midline
+#     combined_hairplot([ec_fourb[2]], 0, 0, .7)
+#     combined_hairplot([ec_fourb[0]], 0, 1, .7)
+#     combined_hairplot([ec_fourb[1]], 1, 1, .7)
+#     hairplot_heatmap(all_n_ec, 1)
 #     plot_all_results(ec_fourb)
-
-    hairplot_heatmap([ec_fourb[0]], 2)
-    hairplot_heatmap([ec_fourb[1]], 2)
-    hairplot_heatmap([ec_fourb[2]], 1)
-    
-    hairplot_heatmap([ec_fourw[0]], 2)
-
-#     hairplot_collisionmap(ec_fourb[0], ec_fourb[1], 1)
-
-#    vb = correct_traj_by_visual_window(four_b + four_w, 15, lambda x: 2*x - 1, ['l', 'd'])
-    vb = correct_traj_by_visual_window(four_b, 25, lambda x: 2*x - 1, ['l', 'd'])
-    vw = correct_traj_by_visual_window(four_w, 25, lambda x: 2*x - 1, ['l'])
-
-
-#    vb = correct_traj_by_visual_window(four_b, 25, lambda x: 2*x - 1, ['l', 'd'])
-#    vw = correct_traj_by_visual_window(four_w, 25, lambda x: 2*x - 1, ['l'])
-
+#     plot_all_results(ec_fourw)
 
     
-#     #     # use barrier on the left for light and dark. then use 2d histograms close in
-# #     # for N trials, L Trials and D trials. Show the heading to barrier plot and
-# #     # make sure it is correct. Say because we saw a significant difference in approach angle, we
-# #     # wondered whether the correct trajectory rate held across retinal occupancies. It didn't.
-# #     # We used the 20 window. Show heatplots for all of these. 
-
-    # each virtual fish is used for red and white trials, so only use white and one virtual for n trials
-    all_n_coords, all_n_ec = get_n_trajectories(red_b_list + white_and_virtual_list[0:2])
-    # args are order by length, invert by barrier, and alpha
-    ltp_n = combined_hairplot(all_n_ec, 0, 0, .7)
-
-    # first arg is order by length. second is flip over the midline
-    combined_hairplot([ec_fourb[2]], 0, 0, .7)
-    combined_hairplot([ec_fourb[0]], 0, 1, .7)
-    combined_hairplot([ec_fourb[1]], 1, 1, .7)
-    hairplot_heatmap(all_n_ec, 1)
-    plot_all_results(ec_fourb)
-    plot_all_results(ec_fourw)
-
+# #     fishlist = red_b_list + four_w
     
-#     fishlist = red_b_list + four_w
-    
-# # # used to test stim and cstart detection -- perfect! 
-# # #    four_b_1 = ['022619_2', '030519_1']
+# # # # used to test stim and cstart detection -- perfect! 
+# # # #    four_b_1 = ['022619_2', '030519_1']
 
-    red24mm_4mmdist_ec = experiment_collector(red24mm_4mmdist, ['l', 'n'],
-                                               [0, visfunc, 1])
-    plot_all_results(red24mm_4mmdist_ec)
+#     red24mm_4mmdist_ec = experiment_collector(red24mm_4mmdist, ['l', 'n'],
+#                                                [0, visfunc, 1])
+#     plot_all_results(red24mm_4mmdist_ec)
 
 
-    q25_ntrials = PI_iqls[0][1]
-    q75_ntrials = PI_iqls[0][3]
-    q25_vs_barrier = pairwise_l_to_n_per_barrierside(
-        [ec_fourb, red24mm_4mmdist_ec], lambda x: x < q25_ntrials)
-    q75_vs_barrier = pairwise_l_to_n_per_barrierside(
-        [ec_fourb, red24mm_4mmdist_ec], lambda x: x > q75_ntrials)
+#     q25_ntrials = PI_iqls[0][1]
+#     q75_ntrials = PI_iqls[0][3]
+#     q25_vs_barrier = pairwise_l_to_n_per_barrierside(
+#         [ec_fourb, red24mm_4mmdist_ec], lambda x: x < q25_ntrials)
+#     q75_vs_barrier = pairwise_l_to_n_per_barrierside(
+#         [ec_fourb, red24mm_4mmdist_ec], lambda x: x > q75_ntrials)
 
-    n_pi_magnitude_outerQs = q25_vs_barrier[0] + list(-1*np.array(q75_vs_barrier[1]))
-    l_pi_magnitude_outerQs = q25_vs_barrier[2] + list(-1*np.array(q75_vs_barrier[3]))
+#     n_pi_magnitude_outerQs = q25_vs_barrier[0] + list(-1*np.array(q75_vs_barrier[1]))
+#     l_pi_magnitude_outerQs = q25_vs_barrier[2] + list(-1*np.array(q75_vs_barrier[3]))
 
 
-#    return n_bleft, n_bright, l_bleft, l_bright
-    n_barrier_enhancement = q25_vs_barrier[1] + list(-1*np.array(q75_vs_barrier[0]))
-    l_barrier_enhancement = q25_vs_barrier[3] + list(-1*np.array(q75_vs_barrier[2]))
+# #    return n_bleft, n_bright, l_bleft, l_bright
+#     n_barrier_enhancement = q25_vs_barrier[1] + list(-1*np.array(q75_vs_barrier[0]))
+#     l_barrier_enhancement = q25_vs_barrier[3] + list(-1*np.array(q75_vs_barrier[2]))
 
 
     
-    wilcoxon_test_outerQs = scipy.stats.wilcoxon(n_pi_magnitude_outerQs, l_pi_magnitude_outerQs)
-    wilcoxon_barrier_enhancement = scipy.stats.wilcoxon(n_barrier_enhancement,
-                                                        l_barrier_enhancement)
+#     wilcoxon_test_outerQs = scipy.stats.wilcoxon(n_pi_magnitude_outerQs, l_pi_magnitude_outerQs)
+#     wilcoxon_barrier_enhancement = scipy.stats.wilcoxon(n_barrier_enhancement,
+#                                                         l_barrier_enhancement)
     
-    iq_vs_barrier_medians = list(map(np.median, [q25_vs_barrier[0], q25_vs_barrier[2], q75_vs_barrier[1], q75_vs_barrier[3]]))
-    # N=14 fish pooled. Woot woot. .0001 wilcoxon. 
+#     iq_vs_barrier_medians = list(map(np.median, [q25_vs_barrier[0], q25_vs_barrier[2], q75_vs_barrier[1], q75_vs_barrier[3]]))
+#     # N=14 fish pooled. Woot woot. .0001 wilcoxon. 
 
-    red12mm_4mmdist_ec_2h = experiment_collector(red12mm_4mmdist_2h,
-                                                 ['l', 'n'], [0, visfunc, 1])
-    plot_all_results(red12mm_4mmdist_ec_2h)
+#     red12mm_4mmdist_ec_2h = experiment_collector(red12mm_4mmdist_2h,
+#                                                  ['l', 'n'], [0, visfunc, 1])
+#     plot_all_results(red12mm_4mmdist_ec_2h)
 
-    red12mm_4mmdist_ec = experiment_collector(red12mm_4mmdist,
-                                              ['l', 'n'], [0, visfunc, 1])
-    plot_all_results(red12mm_4mmdist_ec)
+#     red12mm_4mmdist_ec = experiment_collector(red12mm_4mmdist,
+#                                               ['l', 'n'], [0, visfunc, 1])
+#     plot_all_results(red12mm_4mmdist_ec)
 
-    red48mm_8mmdist_ec_2h = experiment_collector(red48mm_8mmdist_2h,
-                                                 ['l', 'n'], [0, visfunc, 1])
-    plot_all_results(red48mm_8mmdist_ec_2h)
+#     red48mm_8mmdist_ec_2h = experiment_collector(red48mm_8mmdist_2h,
+#                                                  ['l', 'n'], [0, visfunc, 1])
+#     plot_all_results(red48mm_8mmdist_ec_2h)
 
-    red48mm_8mmdist_ec = experiment_collector(red48mm_8mmdist,
-                                              ['l', 'n'], [0, visfunc, 1])
-    plot_all_results(red48mm_8mmdist_ec)
+#     red48mm_8mmdist_ec = experiment_collector(red48mm_8mmdist,
+#                                               ['l', 'n'], [0, visfunc, 1])
+#     plot_all_results(red48mm_8mmdist_ec)
 
-    make_velocity_plots([[ec_fourb[0], red12mm_4mmdist_ec[0], red12mm_4mmdist_ec_2h[0], red24mm_4mmdist_ec[0]],
-                        [ec_fourb[2], red12mm_4mmdist_ec[1], red12mm_4mmdist_ec_2h[1], red24mm_4mmdist_ec[1]]], 95)
+#     make_velocity_plots([[ec_fourb[0], red12mm_4mmdist_ec[0], red12mm_4mmdist_ec_2h[0], red24mm_4mmdist_ec[0]],
+#                         [ec_fourb[2], red12mm_4mmdist_ec[1], red12mm_4mmdist_ec_2h[1], red24mm_4mmdist_ec[1]]], 95)
 
-    make_velocity_plots([[ec_fourb[0], red12mm_4mmdist_ec[0], red12mm_4mmdist_ec_2h[0], red24mm_4mmdist_ec[0],
-                         red48mm_8mmdist_ec_2h[0], red48mm_8mmdist_ec[0]],
-                        [ec_fourb[2], red12mm_4mmdist_ec[1], red12mm_4mmdist_ec_2h[1], red24mm_4mmdist_ec[1],
-                         red48mm_8mmdist_ec_2h[1], red48mm_8mmdist_ec[1]]]
-                        , 95)
+#     make_velocity_plots([[ec_fourb[0], red12mm_4mmdist_ec[0], red12mm_4mmdist_ec_2h[0], red24mm_4mmdist_ec[0],
+#                          red48mm_8mmdist_ec_2h[0], red48mm_8mmdist_ec[0]],
+#                         [ec_fourb[2], red12mm_4mmdist_ec[1], red12mm_4mmdist_ec_2h[1], red24mm_4mmdist_ec[1],
+#                          red48mm_8mmdist_ec_2h[1], red48mm_8mmdist_ec[1]]]
+#                         , 95)
 
 
-    make_velocity_plots([[red48mm_8mmdist_ec_2h[0], red48mm_8mmdist_ec[0]],
-                         [red48mm_8mmdist_ec_2h[1], red48mm_8mmdist_ec[1]]], 95)
+#     make_velocity_plots([[red48mm_8mmdist_ec_2h[0], red48mm_8mmdist_ec[0]],
+#                          [red48mm_8mmdist_ec_2h[1], red48mm_8mmdist_ec[1]]], 95)
     
     
 
   
-# #     collect_collision_stat(fishlist, 'l', np.ones(len(fishlist)), [0, visfunc, 1])
+# # #     collect_collision_stat(fishlist, 'l', np.ones(len(fishlist)), [0, visfunc, 1])
    
-#     """ PLOTS FOR PAPER """
+# #     """ PLOTS FOR PAPER """
 
     
-    white_and_virtual_bleft = collect_varb_across_ec(white_and_virtual_list, ['l', 'v', 'i'],
-                                                    "Correct Trajectory Percentage BLeft", [0, visfunc, 1])
-    white_and_virtual_bright = collect_varb_across_ec(white_and_virtual_list, ['l', 'v', 'i'],
-                                                     "Correct Trajectory Percentage BRight", [0, visfunc, 1])
-    white_and_virtual_correct = collect_varb_across_ec(white_and_virtual_list, ['l', 'v', 'i'],
-                                                    "Correct Trajectory Percentage", [0, visfunc, 1])
+#     white_and_virtual_bleft = collect_varb_across_ec(white_and_virtual_list, ['l', 'v', 'i'],
+#                                                     "Correct Trajectory Percentage BLeft", [0, visfunc, 1])
+#     white_and_virtual_bright = collect_varb_across_ec(white_and_virtual_list, ['l', 'v', 'i'],
+#                                                      "Correct Trajectory Percentage BRight", [0, visfunc, 1])
+#     white_and_virtual_correct = collect_varb_across_ec(white_and_virtual_list, ['l', 'v', 'i'],
+#                                                     "Correct Trajectory Percentage", [0, visfunc, 1])
 
-    plot_varb_over_ecs([white_and_virtual_bleft, lambda x: (2*x -1)],
-                       [white_and_virtual_bright, lambda x: -1*(2*x - 1)])
+#     plot_varb_over_ecs([white_and_virtual_bleft, lambda x: (2*x -1)],
+#                        [white_and_virtual_bright, lambda x: -1*(2*x - 1)])
 
-    full_distrib_varb_over_ecs([white_and_virtual_correct, lambda x: (2*x -1)])
-    plot_varb_over_ecs([white_and_virtual_correct, lambda x: 2*x -1])
+#     full_distrib_varb_over_ecs([white_and_virtual_correct, lambda x: (2*x -1)])
+#     plot_varb_over_ecs([white_and_virtual_correct, lambda x: 2*x -1])
     
-    white_and_virtual_AI = [list(map(lambda x: (2*x - 1), ai)) for ai in white_and_virtual_correct]
-    white_and_virtual_AI_avg = list(map(np.mean, white_and_virtual_AI))
-    white_and_virtual_AI_median = list(map(np.median, white_and_virtual_AI))
+#     white_and_virtual_AI = [list(map(lambda x: (2*x - 1), ai)) for ai in white_and_virtual_correct]
+#     white_and_virtual_AI_avg = list(map(np.mean, white_and_virtual_AI))
+#     white_and_virtual_AI_median = list(map(np.median, white_and_virtual_AI))
     
-    
-
-    red_bleft = collect_varb_across_ec(red_b_list, 'l', 'Correct Trajectory Percentage BLeft', [0, visfunc, 1])
-
-    red_bright = collect_varb_across_ec(red_b_list, 'l', 'Correct Trajectory Percentage BRight', [0, visfunc, 1])
-
-    red_correct = collect_varb_across_ec(red_b_list, 'l', 'Correct Trajectory Percentage', [0, visfunc, 1])
-
-#    dark_correct = collect_varb_across_ec([four_b],
- #                                         'd', 'Left Traj Percentage', [0, visfunc, 1])
-
-    dark_correct = collect_varb_across_ec([four_b],
-                                          'd', 'Correct Trajectory Percentage', [0, visfunc, 1])
-
     
 
+#     red_bleft = collect_varb_across_ec(red_b_list, 'l', 'Correct Trajectory Percentage BLeft', [0, visfunc, 1])
 
-    plot_varb_over_ecs([red_bleft, lambda x: (2*x -1)],
-                       [red_bright, lambda x: -1*(2*x - 1)])
-    full_distrib_varb_over_ecs([red_correct, lambda x: 2*x -1])
-    plot_varb_over_ecs([red_correct, lambda x: 2*x -1])
-    
-    correct_pi = plot_varb_over_ecs([red_correct, lambda x: 2*x -1])
-    
-    red_AI = [list(map(lambda x: (2*x - 1), ai)) for ai in red_correct]
-    dark_AI = list(map(lambda x: (2*x - 1), dark_correct[0]))
-    dark_AI_ttest = scipy.stats.ttest_1samp(dark_AI, popmean=0)
-    dark_AI_sr_test = scipy.stats.wilcoxon(dark_AI)
-    
-    red_AI_avg = list(map(np.mean, red_AI))
-    red_AI_median = list(map(np.median, red_AI))
-    red_wilcoxons = [scipy.stats.wilcoxon(w) for w in red_AI]
-    doubled_distance_teset = scipy.stats.mannwhitneyu(red_AI[0], red_AI[3])
+#     red_bright = collect_varb_across_ec(red_b_list, 'l', 'Correct Trajectory Percentage BRight', [0, visfunc, 1])
 
-    pairwise_collision_avoidance_comparison(ec_fourb[0], ec_fourb[1])
+#     red_correct = collect_varb_across_ec(red_b_list, 'l', 'Correct Trajectory Percentage', [0, visfunc, 1])
 
+# #    dark_correct = collect_varb_across_ec([four_b],
+#  #                                         'd', 'Left Traj Percentage', [0, visfunc, 1])
 
+#     dark_correct = collect_varb_across_ec([four_b],
+#                                           'd', 'Correct Trajectory Percentage', [0, visfunc, 1])
 
-    cstart_latencies = collect_varb_across_ec(red_b_list, 'l', 'CStart Latency', [0, visfunc, 1])
-    cstart_amplitudes = collect_varb_across_ec(red_b_list, 'l', 'CStart Angle', [0, visfunc, 1])
-    
-    sns.distplot(2*np.concatenate(cstart_latencies), bins=10)
-    pl.show()
-    sns.distplot(np.concatenate(cstart_amplitudes), bins=10)
-    pl.show()
-
-    fig, ax = pl.subplots(1,1)
-    sns.distplot(all_n_PI, bins=5, ax=ax)
-#    ax.set_xlim([-1,1])
     
 
 
-    # USE TTEST_1SAMP W POP MEAN 0.
+#     plot_varb_over_ecs([red_bleft, lambda x: (2*x -1)],
+#                        [red_bright, lambda x: -1*(2*x - 1)])
+#     full_distrib_varb_over_ecs([red_correct, lambda x: 2*x -1])
+#     plot_varb_over_ecs([red_correct, lambda x: 2*x -1])
+    
+#     correct_pi = plot_varb_over_ecs([red_correct, lambda x: 2*x -1])
+    
+#     red_AI = [list(map(lambda x: (2*x - 1), ai)) for ai in red_correct]
+#     dark_AI = list(map(lambda x: (2*x - 1), dark_correct[0]))
+#     dark_AI_ttest = scipy.stats.ttest_1samp(dark_AI, popmean=0)
+#     dark_AI_sr_test = scipy.stats.wilcoxon(dark_AI)
+    
+#     red_AI_avg = list(map(np.mean, red_AI))
+#     red_AI_median = list(map(np.median, red_AI))
+#     red_wilcoxons = [scipy.stats.wilcoxon(w) for w in red_AI]
+#     doubled_distance_teset = scipy.stats.mannwhitneyu(red_AI[0], red_AI[3])
 
-    ttest_white = [scipy.stats.ttest_1samp(list(map(lambda x: (2*x -1), a)), popmean=0) for a in white_and_virtual_correct]
-    wilcoxon_white = [scipy.stats.wilcoxon(list(map(lambda x: (2*x -1), a))) for a in white_and_virtual_correct]
+#     pairwise_collision_avoidance_comparison(ec_fourb[0], ec_fourb[1])
+
+
+
+#     cstart_latencies = collect_varb_across_ec(red_b_list, 'l', 'CStart Latency', [0, visfunc, 1])
+#     cstart_amplitudes = collect_varb_across_ec(red_b_list, 'l', 'CStart Angle', [0, visfunc, 1])
+    
+#     sns.distplot(2*np.concatenate(cstart_latencies), bins=10)
+#     pl.show()
+#     sns.distplot(np.concatenate(cstart_amplitudes), bins=10)
+#     pl.show()
+
+#     fig, ax = pl.subplots(1,1)
+#     sns.distplot(all_n_PI, bins=5, ax=ax)
+# #    ax.set_xlim([-1,1])
+    
+
+
+#     # USE TTEST_1SAMP W POP MEAN 0.
+
+#     ttest_white = [scipy.stats.ttest_1samp(list(map(lambda x: (2*x -1), a)), popmean=0) for a in white_and_virtual_correct]
+#     wilcoxon_white = [scipy.stats.wilcoxon(list(map(lambda x: (2*x -1), a))) for a in white_and_virtual_correct]
 
     
 
-    white_vs_red = scipy.stats.ttest_ind(list(map(lambda x:(2*x -1), white_and_virtual_correct[0])),
-                                         list(map(lambda x:(2*x -1), red_correct[0])))
+#     white_vs_red = scipy.stats.ttest_ind(list(map(lambda x:(2*x -1), white_and_virtual_correct[0])),
+#                                          list(map(lambda x:(2*x -1), red_correct[0])))
 
-    wilcoxon_white_vs_red = scipy.stats.mannwhitneyu(list(map(lambda x:(2*x -1), white_and_virtual_correct[0])),
-                                                 list(map(lambda x:(2*x -1), red_correct[0])))
+#     wilcoxon_white_vs_red = scipy.stats.mannwhitneyu(list(map(lambda x:(2*x -1), white_and_virtual_correct[0])),
+#                                                  list(map(lambda x:(2*x -1), red_correct[0])))
 
 
-    ttest_results = [scipy.stats.ttest_1samp(list(map(lambda x: (2*x -1), a)), popmean=0) for a in red_correct]
-    wilcoxon_results_red_correct = [scipy.stats.wilcoxon(list(map(lambda x: (2*x -1), a))) for a in red_correct]          
+#     ttest_results = [scipy.stats.ttest_1samp(list(map(lambda x: (2*x -1), a)), popmean=0) for a in red_correct]
+#     wilcoxon_results_red_correct = [scipy.stats.wilcoxon(list(map(lambda x: (2*x -1), a))) for a in red_correct]          
 
           
-    ttest_24mm_4mm_vs_48mm_8mm_2h = scipy.stats.mannwhitneyu(list(map(lambda x:(2*x -1), red_correct[1])),
-                                                          list(map(lambda x:(2*x -1), red_correct[4])))
+#     ttest_24mm_4mm_vs_48mm_8mm_2h = scipy.stats.mannwhitneyu(list(map(lambda x:(2*x -1), red_correct[1])),
+#                                                           list(map(lambda x:(2*x -1), red_correct[4])))
 
-    wilcoxon_24mm_4mm_vs_48mm_8mm_2h = scipy.stats.mannwhitneyu(list(map(lambda x:(2*x -1), red_correct[1])),
-                                                             list(map(lambda x:(2*x -1), red_correct[4])))
+#     wilcoxon_24mm_4mm_vs_48mm_8mm_2h = scipy.stats.mannwhitneyu(list(map(lambda x:(2*x -1), red_correct[1])),
+#                                                              list(map(lambda x:(2*x -1), red_correct[4])))
 
 
           
-    avg_latency = np.mean(2*np.concatenate(cstart_latencies))
-    avg_turn = np.mean(np.concatenate(cstart_amplitudes))
+#     avg_latency = np.mean(2*np.concatenate(cstart_latencies))
+#     avg_turn = np.mean(np.concatenate(cstart_amplitudes))
 
-    red_ec_list = [ec_fourb[0], red24mm_4mmdist_ec[0], red12mm_4mmdist_ec_2h[0],
-                   red12mm_4mmdist_ec[0], 
-                   red48mm_8mmdist_ec_2h[0], red48mm_8mmdist_ec[0]]
+#     red_ec_list = [ec_fourb[0], red24mm_4mmdist_ec[0], red12mm_4mmdist_ec_2h[0],
+#                    red12mm_4mmdist_ec[0], 
+#                    red48mm_8mmdist_ec_2h[0], red48mm_8mmdist_ec[0]]
 
-    total_trials = [r.escape_data["Total Valid Trials"] for r in red_ec_list]
-    total_cstarts = [r.escape_data["Total CStarts"] for r in red_ec_list]
-    all_cstarts_angle = [r.escape_data["CStart Angle"] for r in red_ec_list]
+#     total_trials = [r.escape_data["Total Valid Trials"] for r in red_ec_list]
+#     total_cstarts = [r.escape_data["Total CStarts"] for r in red_ec_list]
+#     all_cstarts_angle = [r.escape_data["CStart Angle"] for r in red_ec_list]
     
-    cstart_correct = collect_varb_across_ec(red_b_list, 'l', 'Correct CStart Percentage', [0, visfunc, 1])
+#     cstart_correct = collect_varb_across_ec(red_b_list, 'l', 'Correct CStart Percentage', [0, visfunc, 1])
 
-    plot_varb_over_ecs([cstart_correct, lambda x: (2*x -1)])
-    ttest_results_cstart = [scipy.stats.ttest_1samp(list(map(lambda x: (2*x -1), a)), popmean=0) for a in cstart_correct]
-    wilcoxon_results_cstart = [scipy.stats.wilcoxon(list(map(lambda x: (2*x -1), a))) for a in cstart_correct]
+#     plot_varb_over_ecs([cstart_correct, lambda x: (2*x -1)])
+#     ttest_results_cstart = [scipy.stats.ttest_1samp(list(map(lambda x: (2*x -1), a)), popmean=0) for a in cstart_correct]
+#     wilcoxon_results_cstart = [scipy.stats.wilcoxon(list(map(lambda x: (2*x -1), a))) for a in cstart_correct]
 
-    total_fish_n = [len(f.included_fish) for f in all_n_ec]
+#     total_fish_n = [len(f.included_fish) for f in all_n_ec]
 
-    collision_stats, num_n_trials = infer_collisions(red_b_list+white_and_virtual_list[0:2],
-                                                     False, viswin)
-    collision_percentage_by_fish = plot_collision_stat(collision_stats, num_n_trials)
-    avg_collision_percentage = [np.mean(x) for x in collision_percentage_by_fish]
-    median_collision_percentage = [np.median(x) for x in collision_percentage_by_fish]
+#     collision_stats, num_n_trials = infer_collisions(red_b_list+white_and_virtual_list[0:2],
+#                                                      False, viswin)
+#     collision_percentage_by_fish = plot_collision_stat(collision_stats, num_n_trials)
+#     avg_collision_percentage = [np.mean(x) for x in collision_percentage_by_fish]
+#     median_collision_percentage = [np.median(x) for x in collision_percentage_by_fish]
     
-    mw_collisions_24_vs_12far = scipy.stats.mannwhitneyu(collision_stats[1], collision_stats[2])
-    mw_collisions_12close_vs_24 = scipy.stats.mannwhitneyu(collision_stats[0], collision_stats[1])
+#     mw_collisions_24_vs_12far = scipy.stats.mannwhitneyu(collision_stats[1], collision_stats[2])
+#     mw_collisions_12close_vs_24 = scipy.stats.mannwhitneyu(collision_stats[0], collision_stats[1])
 
 
-    # Plotting heading angle before tap to show same visual angle.
+#     # Plotting heading angle before tap to show same visual angle.
 
-    plot_all_results([red24mm_4mmdist_ec[0]])
-    plot_all_results([red48mm_8mmdist_ec_2h[0]])
+#     plot_all_results([red24mm_4mmdist_ec[0]])
+#     plot_all_results([red48mm_8mmdist_ec_2h[0]])
 
-    # plotting collision rates and avoidance rates for mauthner
-    bleft_visfunc = lambda x: (-180 < x < -viswin)
-    bright_visfunc = lambda x: (viswin < x < 180)
+#     # plotting collision rates and avoidance rates for mauthner
+#     bleft_visfunc = lambda x: (-180 < x < -viswin)
+#     bright_visfunc = lambda x: (viswin < x < 180)
 
-    mauth_l_ec_bleft = experiment_collector(wik_mauthner_l, ['l'],
-                                            [0, bleft_visfunc, 0])[0]
-    mauth_l_ec_bright = experiment_collector(wik_mauthner_l, ['l'],
-                                             [0, bright_visfunc, 0])[0]
-    mauth_r_ec_bleft = experiment_collector(wik_mauthner_r, ['l'],
-                                            [0, bleft_visfunc, 0])[0]
-    mauth_r_ec_bright = experiment_collector(wik_mauthner_r, ['l'],
-                                             [0, bright_visfunc, 0])[0]
+#     mauth_l_ec_bleft = experiment_collector(wik_mauthner_l, ['l'],
+#                                             [0, bleft_visfunc, 0])[0]
+#     mauth_l_ec_bright = experiment_collector(wik_mauthner_l, ['l'],
+#                                              [0, bright_visfunc, 0])[0]
+#     mauth_r_ec_bleft = experiment_collector(wik_mauthner_r, ['l'],
+#                                             [0, bleft_visfunc, 0])[0]
+#     mauth_r_ec_bright = experiment_collector(wik_mauthner_r, ['l'],
+#                                              [0, bright_visfunc, 0])[0]
 
-    bai_mauthners_barrierside = list(
-        map(lambda x: (2*x - 1),
-            mauth_l_ec_bleft.escape_data[
-                "Correct Trajectory Percentage"] + mauth_r_ec_bright.escape_data["Correct Trajectory Percentage"]))
+#     bai_mauthners_barrierside = list(
+#         map(lambda x: (2*x - 1),
+#             mauth_l_ec_bleft.escape_data[
+#                 "Correct Trajectory Percentage"] + mauth_r_ec_bright.escape_data["Correct Trajectory Percentage"]))
 
-    collisions_mauthners_barrierside = mauth_l_ec_bleft.escape_data[
-                "Collision Percentage"] + mauth_r_ec_bright.escape_data["Collision Percentage"]
+#     collisions_mauthners_barrierside = mauth_l_ec_bleft.escape_data[
+#                 "Collision Percentage"] + mauth_r_ec_bright.escape_data["Collision Percentage"]
+
+#     bai_mauthners_opposite_barrier = list(
+#         map(lambda x: (2*x - 1),
+#             mauth_l_ec_bright.escape_data[
+#                 "Correct Trajectory Percentage"] + mauth_r_ec_bleft.escape_data["Correct Trajectory Percentage"]))
+
+#     collisions_mauthners_opposite_barrier = mauth_l_ec_bright.escape_data[
+#                 "Collision Percentage"] + mauth_r_ec_bleft.escape_data["Collision Percentage"]
+
+
+#     dark_collisions = ec_fourb[1].escape_data["Collision Percentage"]
     
-    bai_mauthners_opposite_barrier = list(
-        map(lambda x: (2*x - 1),
-            mauth_l_ec_bright.escape_data[
-                "Correct Trajectory Percentage"] + mauth_r_ec_bleft.escape_data["Correct Trajectory Percentage"]))
-
-    collisions_mauthners_opposite_barrier = mauth_l_ec_bright.escape_data[
-                "Collision Percentage"] + mauth_r_ec_bleft.escape_data["Collision Percentage"]
     
-    sns.boxplot(x=np.concatenate((np.zeros(len(bai_mauthners_barrierside)),
-                                      np.ones(len(bai_mauthners_opposite_barrier)))),
-                y=np.concatenate((bai_mauthners_barrierside, bai_mauthners_opposite_barrier)),
-                whis=np.inf, color='darkgray', linewidth=1.5,
-                medianprops=dict(color="maroon", linewidth=1.5, alpha=1))
+#     sns.boxplot(x=np.concatenate((np.zeros(len(bai_mauthners_barrierside)),
+#                                       np.ones(len(bai_mauthners_opposite_barrier)))),
+#                 y=np.concatenate((bai_mauthners_barrierside, bai_mauthners_opposite_barrier)),
+#                 whis=np.inf, color='darkgray', linewidth=1.5,
+#                 medianprops=dict(color="maroon", linewidth=1.5, alpha=1))
 
-    sns.boxplot(x=np.concatenate((np.zeros(len(collisions_mauthners_barrierside)),
-                                  np.ones(len(collisions_mauthners_opposite_barrier)))),
-                y=np.concatenate((collisions_mauthners_barrierside, collisions_mauthners_opposite_barrier)),
-                whis=np.inf, color='darkgray', linewidth=1.5,
-                medianprops=dict(color="maroon", linewidth=1.5, alpha=1))
+#     sns.boxplot(x=np.concatenate((np.zeros(len(collisions_mauthners_barrierside)),
+#                                   np.ones(len(collisions_mauthners_opposite_barrier)))),
+#                 y=np.concatenate((collisions_mauthners_barrierside, collisions_mauthners_opposite_barrier)),
+#                 whis=np.inf, color='darkgray', linewidth=1.5,
+#                 medianprops=dict(color="maroon", linewidth=1.5, alpha=1))
 
-                
+
+# # use these for statistical tests for Figure 2. 
+    
+# p = scipy.stats.mannwhitneyu(red_AI[1], red_AI[4])
+# c = scipy.stats.mannwhitneyu(collision_percentage_by_fish[1], collision_percentage_by_fish[4])
+
 
          
   
